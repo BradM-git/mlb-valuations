@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import { calculateTradeValue, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
+import Link from 'next/link'
 
 interface PlayerPageProps {
   params: {
@@ -35,6 +36,25 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="text-2xl font-bold text-blue-600">
+              MLB Valuations
+            </Link>
+            <div className="flex gap-6">
+              <Link href="/players" className="text-gray-700 hover:text-blue-600 font-medium">
+                Browse Players
+              </Link>
+              <Link href="/methodology" className="text-gray-700 hover:text-blue-600 font-medium">
+                How It Works
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           

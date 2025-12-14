@@ -11,7 +11,8 @@ interface Player {
   team: string
   position: string
   age: number
-  war?: number  // Use optional with ? instead of | null
+  war?: number
+  tps?: number  // Add TPS field
   image_url: string
 }
 
@@ -71,8 +72,8 @@ export default function PlayersPage() {
       filtered.sort((a, b) => a.team.localeCompare(b.team))
     } else if (sortBy === 'tvi') {
       filtered.sort((a, b) => {
-        const aVal = calculateTradeValue(a, a.war || 2.0)
-        const bVal = calculateTradeValue(b, b.war || 2.0)
+        const aVal = calculateTradeValue(a, a.tps || a.war || 2.0)
+        const bVal = calculateTradeValue(b, b.tps || b.war || 2.0)
         return bVal.tradeValueIndex - aVal.tradeValueIndex
       })
     }
@@ -93,6 +94,25 @@ export default function PlayersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="text-2xl font-bold text-blue-600">
+              MLB Valuations
+            </Link>
+            <div className="flex gap-6">
+              <Link href="/players" className="text-gray-700 hover:text-blue-600 font-medium">
+                Browse Players
+              </Link>
+              <Link href="/methodology" className="text-gray-700 hover:text-blue-600 font-medium">
+                How It Works
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
           
@@ -102,7 +122,7 @@ export default function PlayersPage() {
               MLB Player Valuations
             </h1>
             <p className="text-gray-600">
-              Browse all {players.length} players and their Trade Value Index ratings
+              Browse all {players.length} players and their estimated trade values
             </p>
           </div>
 
@@ -183,7 +203,7 @@ export default function PlayersPage() {
           {/* Players Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPlayers.map(player => {
-              const valuation = calculateTradeValue(player, player.war || 2.0)
+              const valuation = calculateTradeValue(player, player.tps || player.war || 2.0)
               
               return (
                 <Link 
@@ -205,11 +225,12 @@ export default function PlayersPage() {
                         {player.position} • {player.team}
                       </div>
                       <div>
-                        <div className="text-xl font-bold text-green-600">
+                        <div className="text-2xl font-bold text-green-600">
                           {formatDollarValue(valuation.estimatedDollarValue)}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 mt-1">
                           TVI: {valuation.tradeValueIndex}/100
+                          {player.tps && ` • TPS: ${player.tps.toFixed(1)}`}
                         </div>
                       </div>
                     </div>
