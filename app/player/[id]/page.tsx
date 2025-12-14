@@ -30,8 +30,8 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
     notFound()
   }
 
-  // Calculate trade value using real WAR (or default to 2.0 if not available)
-  const valuation = calculateTradeValue(player, player.war || 2.0)
+  // Calculate trade value using Trade Power Score
+  const valuation = calculateTradeValue(player, player.tps)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -68,17 +68,25 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
           <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg shadow-lg p-8 mb-6">
             <div className="text-center mb-6">
               <div className="text-sm text-gray-600 uppercase tracking-wide mb-2">
-                Trade Value Index
+                Estimated Trade Value
               </div>
-              <div className={`text-7xl font-bold ${getRatingColor(valuation.tradeValueIndex)} mb-2`}>
-                {valuation.tradeValueIndex}
+              <div className="text-6xl font-bold text-green-600 mb-2">
+                {formatDollarValue(valuation.estimatedDollarValue)}
               </div>
-              <div className="text-xl text-gray-700 font-semibold">
-                {getRatingLabel(valuation.tradeValueIndex)}
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <div className="text-sm text-gray-600">Trade Value Index:</div>
+                <div className={`text-3xl font-bold ${getRatingColor(valuation.tradeValueIndex)}`}>
+                  {valuation.tradeValueIndex}/100
+                </div>
+                <div className="text-sm text-gray-600">
+                  ({getRatingLabel(valuation.tradeValueIndex)})
+                </div>
               </div>
-              <div className="text-gray-600 mt-2">
-                Estimated Value: {formatDollarValue(valuation.estimatedDollarValue)}
-              </div>
+              {player.tps && (
+                <div className="text-sm text-gray-500 mt-2">
+                  Based on Trade Power Score: {player.tps.toFixed(1)}
+                </div>
+              )}
             </div>
 
             {/* Breakdown */}
@@ -157,9 +165,9 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
             </h2>
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <div className="text-sm text-gray-600">2024 WAR</div>
+                <div className="text-sm text-gray-600">Trade Power Score (TPS)</div>
                 <div className="text-lg font-semibold">
-                  {player.war ? player.war.toFixed(1) : 'N/A'}
+                  {player.tps ? player.tps.toFixed(1) : 'N/A'}
                 </div>
               </div>
               <div>

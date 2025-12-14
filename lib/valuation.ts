@@ -1,7 +1,7 @@
 interface Player {
   age: number | null
   position: string
-  war?: number
+  tps?: number
   yearsControl?: number
   salary?: number
 }
@@ -17,7 +17,7 @@ interface ValuationBreakdown {
   }
 }
 
-// Base value: $8M per WAR (industry standard)
+// Base value: $8M per TPS point (similar to WAR standard)
 const WAR_VALUE = 8_000_000
 
 // Age multipliers - adjusted to be less punishing
@@ -61,20 +61,23 @@ function getControlFactor(yearsControl?: number): number {
   return 0.8 // Free agent pending
 }
 
-// Calculate performance score (0-100 scale based on WAR)
-function getPerformanceScore(war?: number): number {
-  if (!war) return 50 // Average
+// Calculate performance score (0-100 scale based on TPS)
+function getPerformanceScore(tps?: number): number {
+  if (!tps) return 50 // Average
   
-  // Convert WAR to 0-100 scale
-  // 0 WAR = 0, 10 WAR = 100, linear scale
-  const score = Math.min(Math.max(war * 10, 0), 100)
+  // Convert TPS to 0-100 scale
+  // 0 TPS = 0, 10 TPS = 100, linear scale
+  const score = Math.min(Math.max(tps * 10, 0), 100)
   return Math.round(score)
 }
 
-// Main valuation function
-export function calculateTradeValue(player: Player, war: number = 3.0): ValuationBreakdown {
-  // Use provided WAR or default to 3.0 (average starter)
-  const performanceValue = war * WAR_VALUE
+// Main valuation function using Trade Power Score
+export function calculateTradeValue(player: Player, tps?: number): ValuationBreakdown {
+  // Use provided TPS, or player's TPS, or default to 2.0
+  const playerTPS = tps ?? player.tps ?? 2.0
+  
+  // Calculate base value from TPS (similar to WAR × $8M)
+  const performanceValue = playerTPS * WAR_VALUE
   
   // Get multipliers
   const ageFactor = getAgeFactor(player.age)
@@ -86,17 +89,15 @@ export function calculateTradeValue(player: Player, war: number = 3.0): Valuatio
     performanceValue * ageFactor * positionFactor * controlFactor
   )
   
-  // Calculate 0-100 Trade Value Index using logarithmic scale
-  // This creates smooth distribution where 100 is asymptotic (never quite reached)
-  // Formula: 100 * (1 - e^(-value/scaleFactor))
-  const scaleFactor = 45_000_000 // Tuned so $90M ≈ 88, $120M ≈ 93
-  let tradeValueIndex = 100 * (1 - Math.exp(-estimatedDollarValue / scaleFactor))
+  // Calculate 0-100 Trade Value Index (for secondary display)
+  // Scale: $60M = 100 (elite)
+  let tradeValueIndex = Math.round((estimatedDollarValue / 60_000_000) * 100)
   
-  // Round to 1 decimal place
-  tradeValueIndex = Math.round(tradeValueIndex * 10) / 10
+  // Cap at 100
+  tradeValueIndex = Math.min(tradeValueIndex, 100)
   
-  // Get performance score
-  const performanceScore = getPerformanceScore(war)
+  // Get performance score (based on TPS)
+  const performanceScore = getPerformanceScore(playerTPS)
   
   return {
     tradeValueIndex,

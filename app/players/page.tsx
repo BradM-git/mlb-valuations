@@ -3,7 +3,7 @@
 import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { calculateTradeValue } from '@/lib/valuation'
+import { calculateTradeValue, formatDollarValue } from '@/lib/valuation'
 
 interface Player {
   id: number
@@ -204,12 +204,12 @@ export default function PlayersPage() {
                       <div className="text-sm text-gray-600 mb-2">
                         {player.position} • {player.team}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {valuation.tradeValueIndex}
+                      <div>
+                        <div className="text-xl font-bold text-green-600">
+                          {formatDollarValue(valuation.estimatedDollarValue)}
                         </div>
                         <div className="text-xs text-gray-500">
-                          TVI
+                          TVI: {valuation.tradeValueIndex}/100
                         </div>
                       </div>
                     </div>
