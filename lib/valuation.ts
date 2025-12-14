@@ -86,12 +86,14 @@ export function calculateTradeValue(player: Player, war: number = 3.0): Valuatio
     performanceValue * ageFactor * positionFactor * controlFactor
   )
   
-  // Calculate 0-100 Trade Value Index
-  // Scale: $60M = 100 (elite)
-  let tradeValueIndex = Math.round((estimatedDollarValue / 60_000_000) * 100)
+  // Calculate 0-100 Trade Value Index using logarithmic scale
+  // This creates smooth distribution where 100 is asymptotic (never quite reached)
+  // Formula: 100 * (1 - e^(-value/scaleFactor))
+  const scaleFactor = 45_000_000 // Tuned so $90M ≈ 88, $120M ≈ 93
+  let tradeValueIndex = 100 * (1 - Math.exp(-estimatedDollarValue / scaleFactor))
   
-  // Cap at 100
-  tradeValueIndex = Math.min(tradeValueIndex, 100)
+  // Round to 1 decimal place
+  tradeValueIndex = Math.round(tradeValueIndex * 10) / 10
   
   // Get performance score
   const performanceScore = getPerformanceScore(war)
