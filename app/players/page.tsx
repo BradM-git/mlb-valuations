@@ -23,7 +23,7 @@ export default function PlayersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [teamFilter, setTeamFilter] = useState('all')
   const [positionFilter, setPositionFilter] = useState('all')
-  const [sortBy, setSortBy] = useState<'name' | 'team' | 'tvi'>('tvi')
+  const [sortBy, setSortBy] = useState<'name' | 'team' | 'etv'>('etv')
 
   useEffect(() => {
     fetchPlayers()
@@ -70,11 +70,11 @@ export default function PlayersPage() {
       filtered.sort((a, b) => a.name.localeCompare(b.name))
     } else if (sortBy === 'team') {
       filtered.sort((a, b) => a.team.localeCompare(b.team))
-    } else if (sortBy === 'tvi') {
+    } else if (sortBy === 'etv') {
       filtered.sort((a, b) => {
         const aVal = calculateTradeValue(a, a.tps || a.war || 2.0)
         const bVal = calculateTradeValue(b, b.tps || b.war || 2.0)
-        return bVal.tradeValueIndex - aVal.tradeValueIndex
+        return bVal.estimatedDollarValue - aVal.estimatedDollarValue
       })
     }
 
@@ -188,7 +188,7 @@ export default function PlayersPage() {
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="tvi">Trade Value (High to Low)</option>
+                  <option value="etv">Trade Value (High to Low)</option>
                   <option value="name">Name (A-Z)</option>
                   <option value="team">Team (A-Z)</option>
                 </select>

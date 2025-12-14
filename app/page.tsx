@@ -7,10 +7,19 @@ async function getTopPlayers() {
     .from('players')
     .select('*')
     .not('tps', 'is', null)
-    .order('tps', { ascending: false })
-    .limit(10)
 
-  return players || []
+  if (!players) return []
+
+  // Calculate ETV for each player and sort by it
+  const playersWithETV = players.map(player => ({
+    ...player,
+    etv: calculateTradeValue(player, player.tps || player.war || 2.0).estimatedDollarValue
+  }))
+
+  // Sort by ETV (highest to lowest) and take top 10
+  return playersWithETV
+    .sort((a, b) => b.etv - a.etv)
+    .slice(0, 10)
 }
 
 export default async function Home() {
