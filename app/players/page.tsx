@@ -11,7 +11,7 @@ interface Player {
   team: string
   position: string
   age: number
-  war: number | null
+  war?: number  // Use optional with ? instead of | null
   image_url: string
 }
 
