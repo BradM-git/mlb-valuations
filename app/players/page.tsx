@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { calculateTradeValue, formatDollarValue } from '@/lib/valuation'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 interface Player {
   id: number
@@ -12,7 +13,7 @@ interface Player {
   position: string
   age: number
   war?: number
-  tps?: number  // Add TPS field
+  tps?: number
   image_url: string
 }
 
@@ -86,28 +87,29 @@ export default function PlayersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl text-gray-600">Loading players...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center transition-colors">
+        <div className="text-xl text-gray-600 dark:text-gray-300">Loading players...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Navigation */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm transition-colors">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Link href="/" className="text-2xl font-bold text-blue-600">
+            <Link href="/" className="text-2xl font-bold text-blue-600 dark:text-blue-400">
               MLB Valuations
             </Link>
-            <div className="flex gap-6">
-              <Link href="/players" className="text-gray-700 hover:text-blue-600 font-medium">
+            <div className="flex items-center gap-6">
+              <Link href="/players" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
                 Browse Players
               </Link>
-              <Link href="/methodology" className="text-gray-700 hover:text-blue-600 font-medium">
+              <Link href="/methodology" className="text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium">
                 How It Works
               </Link>
+              <ThemeToggle />
             </div>
           </div>
         </div>
@@ -118,21 +120,21 @@ export default function PlayersPage() {
           
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
               MLB Player Valuations
             </h1>
-            <p className="text-gray-600">
+            <p className="text-gray-600 dark:text-gray-300">
               Browse all {players.length} players and their estimated trade values
             </p>
           </div>
 
           {/* Filters */}
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6 transition-colors">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               
               {/* Search */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Search Players
                 </label>
                 <input
@@ -140,19 +142,19 @@ export default function PlayersPage() {
                   placeholder="Search by name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
 
               {/* Team Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Team
                 </label>
                 <select
                   value={teamFilter}
                   onChange={(e) => setTeamFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="all">All Teams</option>
                   {teams.map(team => (
@@ -163,13 +165,13 @@ export default function PlayersPage() {
 
               {/* Position Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Position
                 </label>
                 <select
                   value={positionFilter}
                   onChange={(e) => setPositionFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="all">All Positions</option>
                   {positions.map(pos => (
@@ -180,13 +182,13 @@ export default function PlayersPage() {
 
               {/* Sort */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Sort By
                 </label>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="etv">Trade Value (High to Low)</option>
                   <option value="name">Name (A-Z)</option>
@@ -195,7 +197,7 @@ export default function PlayersPage() {
               </div>
             </div>
 
-            <div className="mt-4 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
               Showing {filteredPlayers.length} of {players.length} players
             </div>
           </div>
@@ -209,7 +211,7 @@ export default function PlayersPage() {
                 <Link 
                   key={player.id} 
                   href={`/player/${player.id}`}
-                  className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6"
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow p-6"
                 >
                   <div className="flex items-start gap-4">
                     <img
@@ -218,17 +220,17 @@ export default function PlayersPage() {
                       className="w-20 h-20 rounded-lg object-cover"
                     />
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-lg text-gray-900 truncate">
+                      <h3 className="font-bold text-lg text-gray-900 dark:text-white truncate">
                         {player.name}
                       </h3>
-                      <div className="text-sm text-gray-600 mb-2">
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                         {player.position} • {player.team}
                       </div>
                       <div>
-                        <div className="text-2xl font-bold text-green-600">
+                        <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                           {formatDollarValue(valuation.estimatedDollarValue)}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           TVI: {valuation.tradeValueIndex}/100
                           {player.tps && ` • TPS: ${player.tps.toFixed(1)}`}
                         </div>
@@ -242,7 +244,7 @@ export default function PlayersPage() {
 
           {filteredPlayers.length === 0 && (
             <div className="text-center py-12">
-              <div className="text-gray-500 text-lg">
+              <div className="text-gray-500 dark:text-gray-400 text-lg">
                 No players found matching your filters
               </div>
             </div>
