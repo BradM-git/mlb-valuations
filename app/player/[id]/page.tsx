@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { calculateTradeValue, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
 
 interface Player {
@@ -18,12 +19,15 @@ interface Player {
   salary?: number
 }
 
-export default function PlayerPage({ params }: { params: { id: string } }) {
+export default function PlayerPage() {
+  const params = useParams()
   const [player, setPlayer] = useState<Player | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchPlayer()
+    if (params.id) {
+      fetchPlayer()
+    }
   }, [params.id])
 
   async function fetchPlayer() {
