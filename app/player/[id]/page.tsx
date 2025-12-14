@@ -142,60 +142,48 @@ export default function PlayerPage() {
             {/* Rating Breakdown */}
             <div>
               <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-4">Rating Breakdown</h3>
-              <div className="space-y-3 md:space-y-4">
+              <div className="grid grid-cols-2 gap-3 md:gap-4">
                 
-                <div>
-                  <div className="flex justify-between mb-2 text-sm md:text-base">
-                    <span className="text-gray-700 font-medium">Performance Score</span>
-                    <span className="font-bold text-gray-900">{valuation.breakdown.performanceScore}</span>
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl md:text-4xl font-bold text-blue-600 mb-1">
+                    {valuation.breakdown.performanceScore}
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
-                    <div 
-                      className="bg-blue-600 h-full rounded-full transition-all"
-                      style={{ width: `${valuation.breakdown.performanceScore}%` }}
-                    />
+                  <div className="text-xs md:text-sm text-gray-600 font-medium">
+                    Performance Score
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex justify-between mb-2 text-sm md:text-base">
-                    <span className="text-gray-700 font-medium">Age Factor</span>
-                    <span className="font-bold text-gray-900">{valuation.breakdown.ageFactor}</span>
+                <div className="bg-green-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl md:text-4xl font-bold text-green-600 mb-1">
+                    {valuation.breakdown.ageFactor}
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
-                    <div 
-                      className="bg-green-600 h-full rounded-full transition-all"
-                      style={{ width: `${valuation.breakdown.ageFactor}%` }}
-                    />
+                  <div className="text-xs md:text-sm text-gray-600 font-medium">
+                    Age Factor
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex justify-between mb-2 text-sm md:text-base">
-                    <span className="text-gray-700 font-medium">Position Factor</span>
-                    <span className="font-bold text-gray-900">{valuation.breakdown.positionFactor}</span>
+                <div className="bg-purple-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl md:text-4xl font-bold text-purple-600 mb-1">
+                    {valuation.breakdown.positionFactor}
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
-                    <div 
-                      className="bg-purple-600 h-full rounded-full transition-all"
-                      style={{ width: `${valuation.breakdown.positionFactor}%` }}
-                    />
+                  <div className="text-xs md:text-sm text-gray-600 font-medium">
+                    Position Factor
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex justify-between mb-2 text-sm md:text-base">
-                    <span className="text-gray-700 font-medium">Control Factor</span>
-                    <span className="font-bold text-gray-900">{valuation.breakdown.controlFactor}</span>
+                <div className="bg-orange-50 rounded-lg p-4 text-center">
+                  <div className="text-3xl md:text-4xl font-bold text-orange-600 mb-1">
+                    {valuation.breakdown.controlFactor}
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
-                    <div 
-                      className="bg-orange-600 h-full rounded-full transition-all"
-                      style={{ width: `${valuation.breakdown.controlFactor}%` }}
-                    />
+                  <div className="text-xs md:text-sm text-gray-600 font-medium">
+                    Control Factor
                   </div>
                 </div>
 
+              </div>
+              
+              <div className="mt-4 text-xs md:text-sm text-gray-500 italic text-center">
+                Note: Age, Position, and Control Factors are multipliers (100 = baseline, >100 = premium, <100 = penalty)
               </div>
             </div>
 
