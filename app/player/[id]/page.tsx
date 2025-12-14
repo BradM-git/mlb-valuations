@@ -183,7 +183,7 @@ export default function PlayerPage() {
               </div>
               
               <div className="mt-4 text-xs md:text-sm text-gray-500 italic text-center">
-                Note: Age, Position, and Control Factors are multipliers (100 = baseline, >100 = premium, <100 = penalty)
+                Note: Age, Position, and Control Factors are multipliers (100 = baseline, &gt;100 = premium, &lt;100 = penalty)
               </div>
             </div>
 
