@@ -20,33 +20,33 @@ interface ValuationBreakdown {
 // Base value: $8M per TPS point (similar to WAR standard)
 const WAR_VALUE = 8_000_000
 
-// Age multipliers - reflecting real trade market value
+// Age multipliers - peak performance weighted more heavily
 function getAgeFactor(age: number | null): number {
   if (!age) return 1.0
   
-  if (age < 24) return 1.15  // Elite young talent (reduced from 1.25)
-  if (age <= 26) return 1.10 // Young star entering prime
-  if (age <= 29) return 1.05 // Prime years - slight premium
+  if (age < 24) return 1.08  // Elite young talent (reduced from 1.15)
+  if (age <= 26) return 1.05 // Young star entering prime (reduced from 1.10)
+  if (age <= 29) return 1.03 // Prime years (reduced from 1.05)
   if (age <= 32) return 1.0  // Peak/late prime - no penalty
   if (age <= 34) return 0.85 // Starting decline
   if (age <= 36) return 0.70 // Clear decline
   return 0.5 // Late career
 }
 
-// Position scarcity multipliers
+// Position scarcity multipliers - reduced to let performance shine
 function getPositionFactor(position: string): number {
   const scarcity: { [key: string]: number } = {
-    'SS': 1.10,   // Shortstop - scarce
-    'C': 1.12,    // Catcher - scarce
-    'CF': 1.08,   // Center field - athletic
-    '3B': 1.05,   // Third base
+    'SS': 1.05,   // Shortstop (reduced from 1.10)
+    'C': 1.05,    // Catcher
+    'CF': 1.03,   // Center field
+    '3B': 1.02,   // Third base
     '2B': 1.0,    // Second base
-    '1B': 0.95,   // First base
-    'LF': 0.98,   // Left field
-    'RF': 0.98,   // Right field
-    'SP': 1.1,    // Starting pitcher
-    'RP': 0.8,    // Relief pitcher
-    'DH': 0.85,   // Designated hitter
+    '1B': 0.98,   // First base
+    'LF': 0.99,   // Left field
+    'RF': 0.99,   // Right field
+    'SP': 1.05,   // Starting pitcher
+    'RP': 0.85,   // Relief pitcher
+    'DH': 0.90,   // Designated hitter
   }
   
   return scarcity[position] || 1.0
