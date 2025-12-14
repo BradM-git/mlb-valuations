@@ -1,38 +1,61 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { notFound } from 'next/navigation'
-import { calculateTradeValue, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
 import Link from 'next/link'
+import { calculateTradeValue, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
 
-interface PlayerPageProps {
-  params: {
-    id: string
-  }
+interface Player {
+  id: number
+  name: string
+  team: string
+  position: string
+  age: number
+  war?: number
+  tps?: number
+  image_url: string
+  yearsControl?: number
+  salary?: number
 }
 
-async function getPlayer(id: string) {
-  const { data: player, error } = await supabase
-    .from('players')
-    .select('*')
-    .eq('id', id)
-    .single()
+export default function PlayerPage({ params }: { params: { id: string } }) {
+  const [player, setPlayer] = useState<Player | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  if (error || !player) {
-    return null
+  useEffect(() => {
+    fetchPlayer()
+  }, [params.id])
+
+  async function fetchPlayer() {
+    const { data, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (data) {
+      setPlayer(data)
+    }
+    setLoading(false)
   }
 
-  return player
-}
-
-export default async function PlayerPage({ params }: PlayerPageProps) {
-  const { id } = await params
-  const player = await getPlayer(id)
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-xl text-gray-600">Loading player...</div>
+      </div>
+    )
+  }
 
   if (!player) {
-    notFound()
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-xl text-gray-600">Player not found</div>
+      </div>
+    )
   }
 
-  // Calculate trade value using Trade Power Score
-  const valuation = calculateTradeValue(player, player.tps)
+  const valuation = calculateTradeValue(player, player.tps || player.war || 2.0)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -59,176 +82,153 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
         <div className="max-w-4xl mx-auto">
           
           {/* Player Header */}
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            <div className="flex items-start gap-6">
-              {/* Player Photo */}
+          <div className="bg-white rounded-lg shadow-lg p-4 md:p-8 mb-6 md:mb-8">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-8">
               <img
                 src={player.image_url}
                 alt={player.name}
-                className="w-32 h-32 rounded-lg object-cover"
+                className="w-24 h-24 md:w-32 md:h-32 rounded-lg object-cover mx-auto md:mx-0"
               />
-              
-              {/* Player Info */}
-              <div className="flex-1">
-                <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              <div className="flex-1 text-center md:text-left w-full">
+                <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-2 break-words">
                   {player.name}
                 </h1>
-                <div className="flex gap-4 text-lg text-gray-600 mb-4">
+                <div className="text-base md:text-xl text-gray-600 mb-2 md:mb-4 flex flex-wrap justify-center md:justify-start gap-2">
                   <span>{player.position}</span>
                   <span>•</span>
-                  <span>{player.team}</span>
+                  <span className="break-words">{player.team}</span>
                   <span>•</span>
                   <span>Age {player.age}</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Trade Value Section */}
-          <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg shadow-lg p-8 mb-6">
-            <div className="text-center mb-6">
-              <div className="text-sm text-gray-600 uppercase tracking-wide mb-2">
-                Estimated Trade Value
-              </div>
-              <div className="text-6xl font-bold text-green-600 mb-2">
-                {formatDollarValue(valuation.estimatedDollarValue)}
-              </div>
-              <div className="flex items-center justify-center gap-3 mt-4">
-                <div className="text-sm text-gray-600">Trade Value Index:</div>
-                <div className={`text-3xl font-bold ${getRatingColor(valuation.tradeValueIndex)}`}>
-                  {valuation.tradeValueIndex}/100
-                </div>
-                <div className="text-sm text-gray-600">
-                  ({getRatingLabel(valuation.tradeValueIndex)})
-                </div>
-              </div>
-              {player.tps && (
-                <div className="text-sm text-gray-500 mt-2">
-                  Based on Trade Power Score: {player.tps.toFixed(1)}
-                </div>
-              )}
-            </div>
-
-            {/* Breakdown */}
-            <div className="border-t border-gray-300 pt-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Rating Breakdown
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700">Performance</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-48 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full" 
-                        style={{ width: `${Math.min(valuation.breakdown.performanceScore, 100)}%` }}
-                      />
-                    </div>
-                    <span className="font-semibold text-gray-900 w-12 text-right">
-                      {valuation.breakdown.performanceScore}
-                    </span>
+                
+                {/* Trade Value */}
+                <div className="bg-green-50 rounded-lg p-4 md:p-6">
+                  <div className="text-sm md:text-base text-gray-600 mb-1">Estimated Trade Value</div>
+                  <div className="text-3xl md:text-5xl font-bold text-green-600 mb-2 break-words">
+                    {formatDollarValue(valuation.estimatedDollarValue)}
                   </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700">Age Factor</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-48 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-green-600 h-2 rounded-full" 
-                        style={{ width: `${Math.min(valuation.breakdown.ageFactor, 100)}%` }}
-                      />
+                  <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-sm md:text-base">
+                    <div>
+                      <span className="text-gray-600">Trade Value Index: </span>
+                      <span className={`font-bold ${getRatingColor(valuation.tradeValueIndex)}`}>
+                        {valuation.tradeValueIndex}/100
+                      </span>
                     </div>
-                    <span className="font-semibold text-gray-900 w-12 text-right">
-                      {valuation.breakdown.ageFactor}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700">Position Value</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-48 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-purple-600 h-2 rounded-full" 
-                        style={{ width: `${Math.min(valuation.breakdown.positionFactor, 100)}%` }}
-                      />
+                    <div className="hidden md:block text-gray-400">•</div>
+                    <div>
+                      <span className="text-gray-600">Rating: </span>
+                      <span className={`font-bold ${getRatingColor(valuation.tradeValueIndex)}`}>
+                        {getRatingLabel(valuation.tradeValueIndex)}
+                      </span>
                     </div>
-                    <span className="font-semibold text-gray-900 w-12 text-right">
-                      {valuation.breakdown.positionFactor}
-                    </span>
                   </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700">Team Control</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-48 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-orange-600 h-2 rounded-full" 
-                        style={{ width: `${Math.min(valuation.breakdown.controlFactor, 100)}%` }}
-                      />
+                  {player.tps && (
+                    <div className="mt-2 text-sm md:text-base text-gray-600">
+                      Trade Power Score (TPS): <span className="font-bold">{player.tps.toFixed(1)}</span>
                     </div>
-                    <span className="font-semibold text-gray-900 w-12 text-right">
-                      {valuation.breakdown.controlFactor}
-                    </span>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Player Info */}
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Player Information
-            </h2>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <div className="text-sm text-gray-600">Trade Power Score (TPS)</div>
-                <div className="text-lg font-semibold">
-                  {player.tps ? player.tps.toFixed(1) : 'N/A'}
+          {/* Valuation Breakdown */}
+          <div className="bg-white rounded-lg shadow-lg p-4 md:p-8 mb-6 md:mb-8">
+            
+            {/* Rating Breakdown */}
+            <div>
+              <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-4">Rating Breakdown</h3>
+              <div className="space-y-3 md:space-y-4">
+                
+                <div>
+                  <div className="flex justify-between mb-2 text-sm md:text-base">
+                    <span className="text-gray-700 font-medium">Performance Score</span>
+                    <span className="font-bold text-gray-900">{valuation.breakdown.performanceScore}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
+                    <div 
+                      className="bg-blue-600 h-full rounded-full transition-all"
+                      style={{ width: `${valuation.breakdown.performanceScore}%` }}
+                    />
+                  </div>
                 </div>
+
+                <div>
+                  <div className="flex justify-between mb-2 text-sm md:text-base">
+                    <span className="text-gray-700 font-medium">Age Factor</span>
+                    <span className="font-bold text-gray-900">{valuation.breakdown.ageFactor}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
+                    <div 
+                      className="bg-green-600 h-full rounded-full transition-all"
+                      style={{ width: `${valuation.breakdown.ageFactor}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2 text-sm md:text-base">
+                    <span className="text-gray-700 font-medium">Position Factor</span>
+                    <span className="font-bold text-gray-900">{valuation.breakdown.positionFactor}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
+                    <div 
+                      className="bg-purple-600 h-full rounded-full transition-all"
+                      style={{ width: `${valuation.breakdown.positionFactor}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2 text-sm md:text-base">
+                    <span className="text-gray-700 font-medium">Control Factor</span>
+                    <span className="font-bold text-gray-900">{valuation.breakdown.controlFactor}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 overflow-hidden">
+                    <div 
+                      className="bg-orange-600 h-full rounded-full transition-all"
+                      style={{ width: `${valuation.breakdown.controlFactor}%` }}
+                    />
+                  </div>
+                </div>
+
               </div>
-              <div>
-                <div className="text-sm text-gray-600">Birth Date</div>
-                <div className="text-lg font-semibold">
-                  {player.birth_date || 'N/A'}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">MLB Debut</div>
-                <div className="text-lg font-semibold">
-                  {player.debut_date || 'N/A'}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Position</div>
-                <div className="text-lg font-semibold">
-                  {player.position}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Team</div>
-                <div className="text-lg font-semibold">
-                  {player.team}
-                </div>
+            </div>
+
+            {/* Explanation */}
+            <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-gray-200">
+              <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-4">How This Value Is Calculated</h3>
+              <div className="space-y-3 text-sm md:text-base text-gray-700">
+                <p>
+                  <strong>Performance Score:</strong> Based on the player's Trade Power Score (TPS), 
+                  which combines offensive production, defensive value, and overall contribution.
+                </p>
+                <p>
+                  <strong>Age Factor:</strong> Players in their prime years (24-32) receive the highest 
+                  multipliers. Young players with upside and veterans still performing well are adjusted accordingly.
+                </p>
+                <p>
+                  <strong>Position Factor:</strong> Reflects the scarcity and value of different positions. 
+                  Premium positions like SS, C, and CF receive higher multipliers.
+                </p>
+                <p>
+                  <strong>Control Factor:</strong> Years of team control significantly impact trade value. 
+                  More control = higher value.
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Methodology Note */}
-          <div className="bg-blue-50 rounded-lg p-6">
-            <h3 className="font-semibold text-gray-900 mb-2">
-              💡 How We Calculate Trade Value
-            </h3>
-            <p className="text-gray-700 text-sm">
-              Our Trade Value Index (0-100) combines performance, age, position scarcity, 
-              and team control to estimate a player's value in trade scenarios. This differs 
-              from MLB The Show ratings, which measure pure baseball ability. A young player 
-              with team control may have higher trade value than a better but older/expensive player.
-            </p>
+          {/* Back Button */}
+          <div className="text-center">
+            <Link 
+              href="/players"
+              className="inline-block bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-semibold hover:bg-blue-700 transition text-sm md:text-base"
+            >
+              ← Back to All Players
+            </Link>
           </div>
+
         </div>
       </div>
     </div>

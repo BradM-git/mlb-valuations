@@ -78,17 +78,17 @@ export default async function Home() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-8 mb-16">
-            <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-              <div className="text-5xl font-bold text-blue-600 mb-2">1,150+</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 mb-16">
+            <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 text-center">
+              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 break-words">1,150+</div>
               <div className="text-gray-600 font-medium">MLB Players</div>
             </div>
-            <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-              <div className="text-5xl font-bold text-blue-600 mb-2">588</div>
+            <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 text-center">
+              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 break-words">588</div>
               <div className="text-gray-600 font-medium">With 2024 Stats</div>
             </div>
-            <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-              <div className="text-5xl font-bold text-blue-600 mb-2">30</div>
+            <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 text-center">
+              <div className="text-4xl md:text-5xl font-bold text-blue-600 mb-2 break-words">30</div>
               <div className="text-gray-600 font-medium">MLB Teams</div>
             </div>
           </div>

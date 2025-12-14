@@ -20,22 +20,23 @@ interface ValuationBreakdown {
 // Base value: $8M per TPS point (similar to WAR standard)
 const WAR_VALUE = 8_000_000
 
-// Age multipliers - adjusted to be less punishing
+// Age multipliers - reflecting real trade market value
 function getAgeFactor(age: number | null): number {
   if (!age) return 1.0
   
-  if (age < 25) return 1.25  // Young with upside
-  if (age <= 27) return 1.15 // Rising star
-  if (age <= 30) return 1.0  // Peak years (extended)
-  if (age <= 33) return 0.9  // Still productive (less penalty)
-  if (age <= 36) return 0.75 // Veteran
+  if (age < 24) return 1.15  // Elite young talent (reduced from 1.25)
+  if (age <= 26) return 1.10 // Young star entering prime
+  if (age <= 29) return 1.05 // Prime years - slight premium
+  if (age <= 32) return 1.0  // Peak/late prime - no penalty
+  if (age <= 34) return 0.85 // Starting decline
+  if (age <= 36) return 0.70 // Clear decline
   return 0.5 // Late career
 }
 
 // Position scarcity multipliers
 function getPositionFactor(position: string): number {
   const scarcity: { [key: string]: number } = {
-    'SS': 1.15,   // Shortstop - scarce
+    'SS': 1.10,   // Shortstop - scarce
     'C': 1.12,    // Catcher - scarce
     'CF': 1.08,   // Center field - athletic
     '3B': 1.05,   // Third base
