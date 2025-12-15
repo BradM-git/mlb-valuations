@@ -49,18 +49,18 @@ export default function MethodologyPage() {
               For Position Players:
             </h3>
             <div className="bg-gray-50 p-4 rounded-lg font-mono text-sm mb-4">
-              <div>Offensive Value = (OPS × 10) + (Stolen Bases × 0.15) + (Total Bases ÷ 10)</div>
-              <div className="mt-2">Games Factor = Games Played ÷ 162</div>
-              <div className="mt-2">Position Adjustment = SS/C: +1.0, CF/2B/3B: +0.5, DH: -0.5</div>
-              <div className="mt-4 font-bold">TPS = (Offensive Value × Games Factor) + Position Adjustment</div>
+              <div className="text-gray-800">Offensive Value = (OPS × 10) + (Stolen Bases × 0.15) + (Total Bases ÷ 10)</div>
+              <div className="mt-2 text-gray-800">Games Factor = Games Played ÷ 162</div>
+              <div className="mt-2 text-gray-800">Position Adjustment = SS/C: +1.0, CF/2B/3B: +0.5, DH: -0.5</div>
+              <div className="mt-4 font-bold text-gray-900">TPS = (Offensive Value × Games Factor) + Position Adjustment</div>
             </div>
 
             <h3 className="text-xl font-semibold text-gray-900 mb-3 mt-6">
               For Pitchers:
             </h3>
             <div className="bg-gray-50 p-4 rounded-lg font-mono text-sm">
-              <div>Starters: TPS = (IP ÷ 20) + (K ÷ 25) + (3.5 - ERA)</div>
-              <div className="mt-2">Relievers: TPS = (Saves ÷ 10) + (K ÷ 15) + (3.0 - ERA)</div>
+              <div className="text-gray-800">Starters: TPS = (IP ÷ 20) + (K ÷ 25) + (3.5 - ERA)</div>
+              <div className="mt-2 text-gray-800">Relievers: TPS = (Saves ÷ 10) + (K ÷ 15) + (3.0 - ERA)</div>
             </div>
 
             <p className="text-gray-600 mt-4 text-sm">
@@ -81,7 +81,7 @@ export default function MethodologyPage() {
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Base Value</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <code>TPS × $8M</code>
+                  <code className="text-gray-800">TPS × $8M</code>
                   <p className="text-sm text-gray-600 mt-2">
                     Industry standard: 1 point of value ≈ $8M in free agent market
                   </p>
@@ -91,12 +91,13 @@ export default function MethodologyPage() {
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Age Adjustment</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <ul className="text-sm space-y-1">
-                    <li>Under 25: 1.25× (young, upside)</li>
-                    <li>25-27: 1.15× (rising star)</li>
-                    <li>28-30: 1.0× (prime)</li>
-                    <li>31-33: 0.9× (still productive)</li>
-                    <li>34-36: 0.75× (veteran)</li>
+                  <ul className="text-sm space-y-1 text-gray-700">
+                    <li>Under 24: 1.08× (young, elite talent)</li>
+                    <li>24-26: 1.05× (rising star)</li>
+                    <li>27-29: 1.03× (prime years)</li>
+                    <li>30-32: 1.0× (peak/late prime)</li>
+                    <li>33-34: 0.85× (starting decline)</li>
+                    <li>35-36: 0.70× (clear decline)</li>
                     <li>37+: 0.5× (late career)</li>
                   </ul>
                 </div>
@@ -105,12 +106,12 @@ export default function MethodologyPage() {
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Position Scarcity</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <ul className="text-sm space-y-1">
-                    <li>SS: 1.15× (premium position)</li>
-                    <li>C: 1.12× (scarce skill set)</li>
-                    <li>CF: 1.08× (athleticism required)</li>
-                    <li>SP: 1.1× (starting pitchers are valuable)</li>
-                    <li>DH: 0.85× (limited defensive value)</li>
+                  <ul className="text-sm space-y-1 text-gray-700">
+                    <li>SS: 1.05× (premium position)</li>
+                    <li>C: 1.05× (scarce skill set)</li>
+                    <li>CF: 1.03× (athleticism required)</li>
+                    <li>SP: 1.05× (starting pitchers are valuable)</li>
+                    <li>DH: 0.90× (limited defensive value)</li>
                   </ul>
                 </div>
               </div>
@@ -129,7 +130,7 @@ export default function MethodologyPage() {
 
             <div className="bg-blue-50 border-l-4 border-blue-600 p-4 mt-6">
               <p className="font-semibold text-blue-900 mb-2">Final Formula:</p>
-              <code className="text-sm">
+              <code className="text-sm text-blue-800">
                 Trade Value = TPS × $8M × Age Factor × Position Factor × Control Factor
               </code>
             </div>
@@ -144,7 +145,7 @@ export default function MethodologyPage() {
               A 0-100 scale for easy comparison, calculated as:
             </p>
             <div className="bg-gray-50 p-4 rounded-lg">
-              <code>TVI = (Estimated Trade Value ÷ $60M) × 100</code>
+              <code className="text-gray-800">TVI = (Estimated Trade Value ÷ $60M) × 100</code>
               <p className="text-sm text-gray-600 mt-2">
                 Capped at 100. Players worth $60M+ in trade value receive the maximum score.
               </p>
