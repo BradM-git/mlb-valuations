@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { calculateTradeValue, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
+import { CareerChart } from '../../components/CareerChart'
 
 interface Player {
   id: number
@@ -19,14 +20,24 @@ interface Player {
   salary?: number
 }
 
+interface PlayerSeason {
+  season: number
+  tps: number
+  age: number
+  team: string
+  position: string
+}
+
 export default function PlayerPage() {
   const params = useParams()
   const [player, setPlayer] = useState<Player | null>(null)
+  const [playerSeasons, setPlayerSeasons] = useState<PlayerSeason[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (params.id) {
       fetchPlayer()
+      fetchPlayerSeasons()
     }
   }, [params.id])
 
@@ -41,6 +52,18 @@ export default function PlayerPage() {
       setPlayer(data)
     }
     setLoading(false)
+  }
+
+  async function fetchPlayerSeasons() {
+    const { data, error } = await supabase
+      .from('player_seasons')
+      .select('season, tps, age, team, position')
+      .eq('player_id', params.id)
+      .order('season', { ascending: true })
+
+    if (data) {
+      setPlayerSeasons(data)
+    }
   }
 
   if (loading) {
@@ -135,6 +158,17 @@ export default function PlayerPage() {
               </div>
             </div>
           </div>
+
+          {/* Career Chart */}
+          {playerSeasons.length > 0 && (
+            <div className="mb-6 md:mb-8">
+              <CareerChart 
+                playerName={player.name}
+                seasons={playerSeasons}
+                currentAge={player.age}
+              />
+            </div>
+          )}
 
           {/* Valuation Breakdown */}
           <div className="bg-white rounded-lg shadow-lg p-4 md:p-8 mb-6 md:mb-8">
