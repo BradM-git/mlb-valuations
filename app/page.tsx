@@ -1,8 +1,25 @@
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { calculateTradeValue, formatDollarValue, getRatingLabel } from '@/lib/valuation'
+import { calculateTradeValue, calculateHistoricalMetrics, formatDollarValue, getRatingLabel } from '@/lib/valuation'
+
+interface SeasonStats {
+  season: number
+  tps: number
+  war: number
+  games_played: number
+  batting_avg?: number
+  walks?: number
+  strikeouts?: number
+  home_runs?: number
+  stolen_bases?: number
+  at_bats?: number
+  age: number
+  team: string
+  position: string
+}
 
 async function getTopPlayers() {
+  // Get all players with TPS
   const { data: players } = await supabase
     .from('players')
     .select('*')
@@ -10,11 +27,57 @@ async function getTopPlayers() {
 
   if (!players) return []
 
-  // Calculate ETV for each player and sort by it
-  const playersWithETV = players.map(player => ({
-    ...player,
-    etv: calculateTradeValue(player, player.tps || player.war || 2.0).estimatedDollarValue
-  }))
+  // Get ALL player seasons at once (more efficient than per-player queries)
+  const playerIds = players.map(p => p.id)
+  const { data: allSeasons } = await supabase
+    .from('player_seasons')
+    .select('*')
+    .in('player_id', playerIds)
+    .order('season', { ascending: false })
+
+  // Group seasons by player_id
+  const seasonsByPlayer = new Map<number, SeasonStats[]>()
+  allSeasons?.forEach(season => {
+    if (!seasonsByPlayer.has(season.player_id)) {
+      seasonsByPlayer.set(season.player_id, [])
+    }
+    seasonsByPlayer.get(season.player_id)!.push(season)
+  })
+
+  // Calculate ETV for each player with historical context
+  const playersWithETV = players.map(player => {
+    const playerSeasons = seasonsByPlayer.get(player.id) || []
+    
+    // Calculate historical metrics if we have season data
+    const historicalData = playerSeasons.length > 0 
+      ? calculateHistoricalMetrics(playerSeasons)
+      : undefined
+
+    // TEMPORARY DEBUG - Remove after testing
+    if (['Juan Soto', 'Cal Raleigh'].includes(player.name)) {
+      console.log(`\n=== ${player.name} DEBUG ===`)
+      console.log('Player seasons count:', playerSeasons.length)
+      console.log('Current TPS from player record:', player.tps)
+      console.log('Historical data:', historicalData)
+      
+      if (historicalData) {
+        console.log('3-year avg:', historicalData.threeYearAvgTPS)
+        console.log('Years elite:', historicalData.yearsElite)
+        console.log('Recent seasons:', playerSeasons.slice(0, 3).map(s => ({ season: s.season, tps: s.tps })))
+      }
+    }
+
+    const valuation = calculateTradeValue(
+      player, 
+      player.tps || player.war || 2.0,
+      historicalData
+    )
+
+    return {
+      ...player,
+      etv: valuation.estimatedDollarValue
+    }
+  })
 
   // Sort by ETV (highest to lowest) and take top 10
   return playersWithETV
@@ -59,7 +122,7 @@ export default async function Home() {
             </p>
             <p className="text-lg text-gray-500 mb-8">
               Powered by our Trade Power Score (TPS) - a comprehensive metric analyzing 
-              2024 stats for over 1,150 MLB players
+              multi-year performance for over 1,150 MLB players
             </p>
             <div className="flex gap-4 justify-center">
               <Link 
@@ -100,7 +163,8 @@ export default async function Home() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {topPlayers.map((player, index) => {
-                const valuation = calculateTradeValue(player)
+                // Note: We don't recalculate here since we already have etv from getTopPlayers
+                const etv = player.etv
                 
                 return (
                   <Link 
@@ -125,7 +189,7 @@ export default async function Home() {
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-3xl font-bold text-green-600">
-                          {formatDollarValue(valuation.estimatedDollarValue)}
+                          {formatDollarValue(etv)}
                         </div>
                         <div className="text-sm text-gray-500">
                           TPS: {player.tps?.toFixed(1)}

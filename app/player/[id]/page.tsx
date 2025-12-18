@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { calculateTradeValue, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
+import { calculateTradeValue, calculateHistoricalMetrics, formatDollarValue, getRatingLabel, getRatingColor } from '@/lib/valuation'
 import { CareerChart } from '../../components/CareerChart'
 
 interface Player {
@@ -23,9 +23,17 @@ interface Player {
 interface PlayerSeason {
   season: number
   tps: number
+  war: number
   age: number
   team: string
   position: string
+  games_played: number
+  batting_avg?: number
+  walks?: number
+  strikeouts?: number
+  home_runs?: number
+  stolen_bases?: number
+  at_bats?: number
 }
 
 export default function PlayerPage() {
@@ -57,7 +65,7 @@ export default function PlayerPage() {
   async function fetchPlayerSeasons() {
     const { data, error } = await supabase
       .from('player_seasons')
-      .select('season, tps, age, team, position')
+      .select('*')
       .eq('player_id', params.id)
       .order('season', { ascending: true })
 
@@ -82,7 +90,16 @@ export default function PlayerPage() {
     )
   }
 
-  const valuation = calculateTradeValue(player, player.tps || player.war || 2.0)
+  // Calculate valuation with historical context
+  const historicalData = playerSeasons.length > 0 
+    ? calculateHistoricalMetrics(playerSeasons)
+    : undefined
+
+  const valuation = calculateTradeValue(
+    player, 
+    player.tps || player.war || 2.0,
+    historicalData
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -154,6 +171,12 @@ export default function PlayerPage() {
                       Trade Power Score (TPS): <span className="font-bold">{player.tps.toFixed(1)}</span>
                     </div>
                   )}
+                  {/* Show historical context if available */}
+                  {historicalData && historicalData.yearsElite && historicalData.yearsElite > 0 && (
+                    <div className="mt-2 text-sm text-blue-600 font-medium">
+                      {historicalData.yearsElite} elite season{historicalData.yearsElite > 1 ? 's' : ''} (TPS ≥ 4.0)
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -214,10 +237,46 @@ export default function PlayerPage() {
                   </div>
                 </div>
 
+                {/* NEW: Elite Skill Premium */}
+                {valuation.breakdown.eliteSkillPremium && valuation.breakdown.eliteSkillPremium !== 100 && (
+                  <div className="bg-yellow-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl md:text-4xl font-bold text-yellow-600 mb-1">
+                      {valuation.breakdown.eliteSkillPremium}
+                    </div>
+                    <div className="text-xs md:text-sm text-gray-600 font-medium">
+                      Elite Skill Premium
+                    </div>
+                  </div>
+                )}
+
+                {/* NEW: Track Record Multiplier */}
+                {valuation.breakdown.trackRecordMultiplier && valuation.breakdown.trackRecordMultiplier !== 100 && (
+                  <div className="bg-pink-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl md:text-4xl font-bold text-pink-600 mb-1">
+                      {valuation.breakdown.trackRecordMultiplier}
+                    </div>
+                    <div className="text-xs md:text-sm text-gray-600 font-medium">
+                      Track Record
+                    </div>
+                  </div>
+                )}
+
+                {/* NEW: Consistency Bonus */}
+                {valuation.breakdown.consistencyBonus && valuation.breakdown.consistencyBonus !== 100 && (
+                  <div className="bg-indigo-50 rounded-lg p-4 text-center">
+                    <div className="text-3xl md:text-4xl font-bold text-indigo-600 mb-1">
+                      {valuation.breakdown.consistencyBonus}
+                    </div>
+                    <div className="text-xs md:text-sm text-gray-600 font-medium">
+                      Consistency Bonus
+                    </div>
+                  </div>
+                )}
+
               </div>
               
               <div className="mt-4 text-xs md:text-sm text-gray-500 italic text-center">
-                Note: Age, Position, and Control Factors are multipliers (100 = baseline, &gt;100 = premium, &lt;100 = penalty)
+                Note: Factors are multipliers (100 = baseline, &gt;100 = premium, &lt;100 = penalty)
               </div>
             </div>
 
@@ -230,16 +289,28 @@ export default function PlayerPage() {
                   which combines offensive production, defensive value, and overall contribution.
                 </p>
                 <p>
-                  <strong>Age Factor:</strong> Players in their prime years (24-32) receive the highest 
-                  multipliers. Young players with upside and veterans still performing well are adjusted accordingly.
+                  <strong>Age Factor:</strong> Players ages 26-30 are in their prime and receive the highest 
+                  multipliers (112%). Young prospects (23-25) get a moderate bonus (106-109%). Players 31+ see declining multipliers.
                 </p>
                 <p>
-                  <strong>Position Factor:</strong> Reflects the scarcity and value of different positions. 
-                  Premium positions like SS, C, and CF receive higher multipliers.
+                  <strong>Position Factor:</strong> Reflects position scarcity with subtle adjustments. 
+                  SS (103%), C (102%), CF (102%). Performance matters more than position.
+                </p>
+                <p>
+                  <strong>Elite Skill Premium:</strong> Two-way players (TWP) get 118%. Elite plate discipline 
+                  (high BB%, low K%) adds 108%. Elite power adds 105%. Elite speed adds 104%.
+                </p>
+                <p>
+                  <strong>Track Record:</strong> Players with 3+ elite seasons (TPS ≥ 4.0) get 108%. 
+                  One-year breakouts are discounted (80-85%) to prevent overvaluing flukes.
+                </p>
+                <p>
+                  <strong>Consistency Bonus:</strong> Players with stable year-to-year performance get up to 105% 
+                  bonus. High variance reduces this bonus.
                 </p>
                 <p>
                   <strong>Control Factor:</strong> Years of team control significantly impact trade value. 
-                  More control = higher value.
+                  4+ years = 150%, 2-3 years = 120%, 1 year = 100%.
                 </p>
               </div>
             </div>

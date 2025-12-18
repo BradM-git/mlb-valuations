@@ -3,7 +3,7 @@
 import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { calculateTradeValue, formatDollarValue } from '@/lib/valuation'
+import { calculateTradeValue, calculateHistoricalMetrics, formatDollarValue } from '@/lib/valuation'
 
 interface Player {
   id: number
@@ -16,9 +16,29 @@ interface Player {
   image_url: string
 }
 
+interface SeasonStats {
+  season: number
+  tps: number
+  war: number
+  games_played: number
+  batting_avg?: number
+  walks?: number
+  strikeouts?: number
+  home_runs?: number
+  stolen_bases?: number
+  at_bats?: number
+  age: number
+  team: string
+  position: string
+}
+
+interface PlayerWithETV extends Player {
+  etv: number
+}
+
 export default function PlayersPage() {
-  const [players, setPlayers] = useState<Player[]>([])
-  const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([])
+  const [players, setPlayers] = useState<PlayerWithETV[]>([])
+  const [filteredPlayers, setFilteredPlayers] = useState<PlayerWithETV[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [teamFilter, setTeamFilter] = useState('all')
@@ -34,14 +54,56 @@ export default function PlayersPage() {
   }, [players, searchTerm, teamFilter, positionFilter, sortBy])
 
   async function fetchPlayers() {
-    const { data, error } = await supabase
+    // Fetch all players
+    const { data: playersData, error } = await supabase
       .from('players')
       .select('*')
       .order('name')
 
-    if (data) {
-      setPlayers(data)
+    if (!playersData) {
+      setLoading(false)
+      return
     }
+
+    // Fetch ALL player seasons at once (more efficient)
+    const playerIds = playersData.map(p => p.id)
+    const { data: allSeasons } = await supabase
+      .from('player_seasons')
+      .select('*')
+      .in('player_id', playerIds)
+      .order('season', { ascending: false })
+
+    // Group seasons by player_id
+    const seasonsByPlayer = new Map<number, SeasonStats[]>()
+    allSeasons?.forEach(season => {
+      if (!seasonsByPlayer.has(season.player_id)) {
+        seasonsByPlayer.set(season.player_id, [])
+      }
+      seasonsByPlayer.get(season.player_id)!.push(season)
+    })
+
+    // Calculate ETV with historical context for all players
+    const playersWithETV = playersData.map(player => {
+      const playerSeasons = seasonsByPlayer.get(player.id) || []
+      
+      // Calculate historical metrics if we have season data
+      const historicalData = playerSeasons.length > 0 
+        ? calculateHistoricalMetrics(playerSeasons)
+        : undefined
+
+      const valuation = calculateTradeValue(
+        player,
+        player.tps || player.war || 2.0,
+        historicalData
+      )
+
+      return {
+        ...player,
+        etv: valuation.estimatedDollarValue
+      }
+    })
+
+    setPlayers(playersWithETV)
     setLoading(false)
   }
 
@@ -71,11 +133,8 @@ export default function PlayersPage() {
     } else if (sortBy === 'team') {
       filtered.sort((a, b) => a.team.localeCompare(b.team))
     } else if (sortBy === 'etv') {
-      filtered.sort((a, b) => {
-        const aVal = calculateTradeValue(a, a.tps || a.war || 2.0)
-        const bVal = calculateTradeValue(b, b.tps || b.war || 2.0)
-        return bVal.estimatedDollarValue - aVal.estimatedDollarValue
-      })
+      // Already calculated, just sort by it
+      filtered.sort((a, b) => b.etv - a.etv)
     }
 
     setFilteredPlayers(filtered)
@@ -203,7 +262,9 @@ export default function PlayersPage() {
           {/* Players Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPlayers.map(player => {
-              const valuation = calculateTradeValue(player, player.tps || player.war || 2.0)
+              // Use pre-calculated ETV from state
+              const etv = player.etv
+              const tradeValueIndex = Math.min(Math.round((etv / 60_000_000) * 100), 100)
               
               return (
                 <Link 
@@ -226,10 +287,10 @@ export default function PlayersPage() {
                       </div>
                       <div>
                         <div className="text-2xl font-bold text-green-600">
-                          {formatDollarValue(valuation.estimatedDollarValue)}
+                          {formatDollarValue(etv)}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          TVI: {valuation.tradeValueIndex}/100
+                          TVI: {tradeValueIndex}/100
                           {player.tps && ` • TPS: ${player.tps.toFixed(1)}`}
                         </div>
                       </div>
