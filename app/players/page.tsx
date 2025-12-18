@@ -65,17 +65,34 @@ export default function PlayersPage() {
       return
     }
 
-    // Fetch ALL player seasons at once (more efficient)
+    // Fetch ALL player seasons - Use batching to avoid 1000 row limit
     const playerIds = playersData.map(p => p.id)
-    const { data: allSeasons } = await supabase
-      .from('player_seasons')
-      .select('*')
-      .in('player_id', playerIds)
-      .order('season', { ascending: false })
+    
+    let allSeasons: SeasonStats[] = []
+    const batchSize = 1000
+    let offset = 0
+    let hasMore = true
+
+    while (hasMore) {
+      const { data: seasonBatch } = await supabase
+        .from('player_seasons')
+        .select('*')
+        .in('player_id', playerIds)
+        .order('season', { ascending: false })
+        .range(offset, offset + batchSize - 1)
+      
+      if (seasonBatch && seasonBatch.length > 0) {
+        allSeasons = [...allSeasons, ...seasonBatch]
+        offset += batchSize
+        hasMore = seasonBatch.length === batchSize
+      } else {
+        hasMore = false
+      }
+    }
 
     // Group seasons by player_id
     const seasonsByPlayer = new Map<number, SeasonStats[]>()
-    allSeasons?.forEach(season => {
+    allSeasons.forEach(season => {
       if (!seasonsByPlayer.has(season.player_id)) {
         seasonsByPlayer.set(season.player_id, [])
       }

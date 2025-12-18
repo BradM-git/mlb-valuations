@@ -27,13 +27,30 @@ async function getTopPlayers() {
 
   if (!players) return []
 
-  // Get ALL player seasons at once (more efficient than per-player queries)
+  // Get ALL player seasons - Fetch in batches to avoid 1000 row limit
   const playerIds = players.map(p => p.id)
-  const { data: allSeasons } = await supabase
-    .from('player_seasons')
-    .select('*')
-    .in('player_id', playerIds)
-    .order('season', { ascending: false })
+  
+  let allSeasons: SeasonStats[] = []
+  const batchSize = 1000
+  let offset = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const { data: seasonBatch } = await supabase
+      .from('player_seasons')
+      .select('*')
+      .in('player_id', playerIds)
+      .order('season', { ascending: false })
+      .range(offset, offset + batchSize - 1)
+    
+    if (seasonBatch && seasonBatch.length > 0) {
+      allSeasons = [...allSeasons, ...seasonBatch]
+      offset += batchSize
+      hasMore = seasonBatch.length === batchSize
+    } else {
+      hasMore = false
+    }
+  }
 
   // Group seasons by player_id
   const seasonsByPlayer = new Map<number, SeasonStats[]>()
@@ -52,20 +69,6 @@ async function getTopPlayers() {
     const historicalData = playerSeasons.length > 0 
       ? calculateHistoricalMetrics(playerSeasons)
       : undefined
-
-    // TEMPORARY DEBUG - Remove after testing
-    if (['Juan Soto', 'Cal Raleigh'].includes(player.name)) {
-      console.log(`\n=== ${player.name} DEBUG ===`)
-      console.log('Player seasons count:', playerSeasons.length)
-      console.log('Current TPS from player record:', player.tps)
-      console.log('Historical data:', historicalData)
-      
-      if (historicalData) {
-        console.log('3-year avg:', historicalData.threeYearAvgTPS)
-        console.log('Years elite:', historicalData.yearsElite)
-        console.log('Recent seasons:', playerSeasons.slice(0, 3).map(s => ({ season: s.season, tps: s.tps })))
-      }
-    }
 
     const valuation = calculateTradeValue(
       player, 
