@@ -28,6 +28,92 @@ function fmt2(n?: number | null) {
   return n.toFixed(2);
 }
 
+type Outlook = {
+  label: "Up" | "Steady" | "Down";
+  confidence: "High" | "Medium" | "Low";
+  reasons: string[];
+};
+
+// v1: uses only last 2–3 seasons WAR + games played.
+// This is NOT a projection; it's a recent-trajectory signal.
+function computeOutlook(seasonsDesc: SeasonRow[]): Outlook {
+  const last3 = seasonsDesc
+    .filter((s) => Number.isFinite(s.season))
+    .slice(0, 3);
+
+  const s0 = last3[0]; // most recent
+  const s1 = last3[1]; // prior
+  const s2 = last3[2]; // two years ago (optional)
+
+  const war0 = s0?.war ?? null;
+  const war1 = s1?.war ?? null;
+
+  const gp0 = s0?.games_played ?? null;
+  const gp1 = s1?.games_played ?? null;
+
+  // Default if we don't have enough data
+  if (war0 == null || war1 == null) {
+    return {
+      label: "Steady",
+      confidence: "Low",
+      reasons: ["Limited recent season data available."],
+    };
+  }
+
+  const delta = war0 - war1;
+
+  // Direction thresholds (tuned to feel reasonable, not hypersensitive)
+  const upThresh = 0.75;
+  const downThresh = -0.75;
+
+  let label: Outlook["label"] = "Steady";
+  if (delta >= upThresh) label = "Up";
+  else if (delta <= downThresh) label = "Down";
+
+  // Confidence based on playing-time stability
+  // (We don't know pitcher IP, so games_played is imperfect but usable for v1.)
+  const gpMinHigh = 120; // "full-ish season" for hitters
+  const gpMinMed = 70;
+
+  let confidence: Outlook["confidence"] = "Medium";
+  if ((gp0 != null && gp0 < gpMinMed) || (gp1 != null && gp1 < gpMinMed)) confidence = "Low";
+  else if ((gp0 != null && gp0 >= gpMinHigh) && (gp1 != null && gp1 >= gpMinHigh)) confidence = "High";
+
+  // Reasons: short, non-technical, defensible
+  const reasons: string[] = [];
+
+  // 1) Recent impact level
+  if (war0 >= 6) reasons.push("Elite recent impact.");
+  else if (war0 >= 4) reasons.push("All-Star level recent impact.");
+  else if (war0 >= 2) reasons.push("Above-average recent impact.");
+  else if (war0 >= 0) reasons.push("Around league-average recent impact.");
+  else reasons.push("Recent impact has been below average.");
+
+  // 2) Trajectory
+  if (label === "Up") reasons.push("Improving year over year.");
+  if (label === "Down") reasons.push("Declined year over year.");
+  if (label === "Steady") reasons.push("Similar level year over year.");
+
+  // 3) Playing time note
+  if (confidence === "Low") reasons.push("Lower playing time makes signal less stable.");
+  if (confidence === "High") reasons.push("Stable playing time supports signal.");
+
+  // Optional: use 3rd season as a consistency note
+  if (s2?.war != null && Number.isFinite(s2.war)) {
+    const war2 = s2.war as number;
+    const avg3 = (war0 + war1 + war2) / 3;
+    if (avg3 >= 4 && label !== "Down") reasons.push("Sustained high-level performance over multiple seasons.");
+    if (avg3 < 2 && label === "Up") reasons.push("Recent improvement stands out vs. prior baseline.");
+  }
+
+  // Keep to 3 reasons max for readability
+  return {
+    label,
+    confidence,
+    reasons: reasons.slice(0, 3),
+  };
+}
+
 export default async function PlayerDetailPage({
   params,
 }: {
@@ -58,9 +144,10 @@ export default async function PlayerDetailPage({
 
   const { valuation } = getPlayerValuation(player as any, safeSeasons as any);
 
-  const warUsed = valuation?.breakdown?.warUsed ?? null;
-  const tpsMod = valuation?.breakdown?.tpsModifier ?? null;
-  const est = valuation?.estimatedDollarValue ?? null;
+  // Keep these as-is (you may change later), we’re just relabeling/positioning.
+  const recentImpactValue = valuation?.breakdown?.warUsed ?? null;
+  const stabilityValue = valuation?.breakdown?.tpsModifier ?? null;
+  const longTermContextValue = valuation?.estimatedDollarValue ?? null;
 
   const seasonsDesc = safeSeasons
     .slice()
@@ -76,12 +163,14 @@ export default async function PlayerDetailPage({
       team: s.team ?? player.team ?? null,
     }));
 
+  const outlook = computeOutlook(seasonsDesc);
+
   return (
     <div className="text-base">
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="p-6 sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
               <div className="h-16 w-16 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -97,27 +186,54 @@ export default async function PlayerDetailPage({
                   {player.team ?? "—"} · {player.position ?? "—"} · Age {player.age ?? "—"}
                 </div>
 
-                {/* ✅ New framing copy */}
                 <p className="mt-2 text-sm text-slate-600">
                   Snapshot of recent performance and role stability. Not a projection or betting advice.
                 </p>
               </div>
             </div>
 
-            {/* ✅ Label renames only (no logic changes) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs font-semibold text-slate-500">Recent Impact</div>
-                <div className="text-lg font-bold text-slate-900">{warUsed ?? "—"}</div>
+                <div className="text-lg font-bold text-slate-900">{recentImpactValue ?? "—"}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs font-semibold text-slate-500">Stability</div>
-                <div className="text-lg font-bold text-slate-900">{tpsMod ?? "—"}</div>
+                <div className="text-lg font-bold text-slate-900">{stabilityValue ?? "—"}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs font-semibold text-slate-500">Long-Term Context</div>
-                <div className="text-lg font-bold text-slate-900">{formatMoney(est)}</div>
+                <div className="text-lg font-bold text-slate-900">{formatMoney(longTermContextValue)}</div>
               </div>
+            </div>
+          </div>
+
+          {/* ✅ Player Outlook v1 */}
+          <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="p-5 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Player Outlook
+                  </div>
+                  <div className="mt-1 text-xl font-bold text-slate-900">
+                    {outlook.label}{" "}
+                    <span className="text-sm font-semibold text-slate-500">
+                      · Confidence: {outlook.confidence}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  Based on recent season impact and playing-time stability.
+                </div>
+              </div>
+
+              <ul className="mt-4 list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {outlook.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
             </div>
           </div>
 
