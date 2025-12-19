@@ -1,26 +1,21 @@
+// app/api/players/[id]/route.ts
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getPlayerValuation } from "@/lib/valuation";
 
 export const dynamic = "force-dynamic";
 
-function extractId(req: Request, params?: { id?: string }) {
-  const fromParams = params?.id;
-  if (fromParams) return fromParams;
-
-  // Fallback: parse last path segment
-  const pathname = new URL(req.url).pathname;
-  const seg = pathname.split("/").filter(Boolean).pop();
-  return seg ?? "";
-}
-
-export async function GET(req: Request, ctx: { params?: { id?: string } }) {
-  const rawId = extractId(req, ctx?.params);
-  const playerId = Number(rawId);
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const { id } = await ctx.params;
+  const playerId = Number(id);
 
   if (!Number.isFinite(playerId) || playerId <= 0) {
     return NextResponse.json(
-      { error: `Invalid player id: ${rawId || "undefined"}` },
+      { error: `Invalid player id: ${id || "undefined"}` },
       { status: 400 }
     );
   }
@@ -35,7 +30,7 @@ export async function GET(req: Request, ctx: { params?: { id?: string } }) {
   if (!player)
     return NextResponse.json({ error: "Player not found" }, { status: 404 });
 
-  // ✅ INCLUDE team per season so charts can render correct logos
+  // ✅ Include team per season (if populated in DB)
   const { data: seasons, error: sErr } = await supabase
     .from("player_seasons")
     .select("season,tps,games_played,war,team")
