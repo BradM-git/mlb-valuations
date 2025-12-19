@@ -1,57 +1,194 @@
 // app/page.tsx
 import Link from "next/link";
-import { headers } from "next/headers";
+import { supabase } from "@/lib/supabase";
 
-type PlayerRow = {
+const WEIGHT_CURRENT = 0.7;
+const WEIGHT_PREV = 0.3;
+
+const MIN_GAMES_HITTER_CURRENT = 100;
+const MIN_GAMES_PITCHER_CURRENT = 20;
+
+// Track record soft requirements (used for penalties, not hard exclusion)
+const MIN_GAMES_HITTER_PREV = 80;
+const MIN_GAMES_PITCHER_PREV = 15;
+
+const PITCHER_DAMPEN = 0.9;
+
+// Candidate pool derived from current season WAR (no TPS gate)
+const CANDIDATE_LIMIT_CURRENT_SEASON = 250;
+
+type PlayerObj = {
   id: number;
   name: string;
   team: string | null;
   position: string | null;
   age: number | null;
   image_url: string | null;
-  valuation?: {
-    estimatedDollarValue?: number | null;
-  };
 };
 
-type PlayersApiResponse = {
-  page: number;
-  pageSize: number;
-  total: number;
-  rows: PlayerRow[];
+type SeasonJoinRow = {
+  player_id: number;
+  season: number;
+  war: number | null;
+  games_played: number | null;
+  // Supabase may return join as array depending on relationship typing
+  players: PlayerObj[] | PlayerObj | null;
 };
 
-function formatMoneyMillions(n?: number | null) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const mm = n / 1_000_000;
-  return (
-    new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }).format(mm) + "M"
-  );
+type SeasonRow = {
+  player_id: number;
+  season: number;
+  war: number | null;
+  games_played: number | null;
+};
+
+type PlayerCard = {
+  id: number;
+  name: string;
+  team: string | null;
+  position: string | null;
+  age: number | null;
+  image_url: string | null;
+
+  // internal (not displayed)
+  fanScore: number;
+  warCurrent: number;
+  warPrev: number;
+  seasonCurrent: number;
+};
+
+function num(v: any): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-async function getBaseUrl() {
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
-  if (siteUrl) return siteUrl;
+function isPitcher(pos?: string | null) {
+  if (!pos) return false;
+  return /\bP\b/.test(pos) || pos.includes("P");
+}
 
-  const h = await headers();
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
+function ageMultiplier(age?: number | null) {
+  const a = Number(age);
+  if (!Number.isFinite(a) || a <= 0) return 1;
+
+  if (a <= 30) return 1;
+  if (a <= 34) return Math.pow(0.98, a - 30);
+  return 0.92 * Math.pow(0.96, a - 34);
+}
+
+function normalizePlayer(p: SeasonJoinRow["players"]): PlayerObj | null {
+  if (!p) return null;
+  if (Array.isArray(p)) return p[0] ?? null;
+  return p;
+}
+
+async function resolveMostRecentSeason(): Promise<number | null> {
+  const { data, error } = await supabase
+    .from("player_seasons")
+    .select("season")
+    .order("season", { ascending: false })
+    .limit(1);
+
+  if (error) return null;
+  const s = data?.[0]?.season;
+  return Number.isFinite(s) ? s : null;
 }
 
 export default async function HomePage() {
-  const baseUrl = await getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/players?page=1&limit=10`, { cache: "no-store" });
+  const seasonCurrent = await resolveMostRecentSeason();
+  const seasonPrev = seasonCurrent != null ? seasonCurrent - 1 : null;
 
-  let topPlayers: PlayerRow[] = [];
-  if (res.ok) {
-    const data = (await res.json()) as PlayersApiResponse;
-    topPlayers = (Array.isArray(data?.rows) ? data.rows : []).slice(0, 10);
+  let topPlayers: PlayerCard[] = [];
+
+  if (seasonCurrent != null && seasonPrev != null) {
+    const { data: curRows, error: curErr } = await supabase
+      .from("player_seasons")
+      .select(
+        `
+        player_id,
+        season,
+        war,
+        games_played,
+        players:players (
+          id,
+          name,
+          team,
+          position,
+          age,
+          image_url
+        )
+      `
+      )
+      .eq("season", seasonCurrent)
+      .not("war", "is", null)
+      .order("war", { ascending: false })
+      .limit(CANDIDATE_LIMIT_CURRENT_SEASON);
+
+    if (!curErr && Array.isArray(curRows) && curRows.length) {
+      const candidates = (curRows as unknown as SeasonJoinRow[])
+        .map((r) => ({ ...r, players: normalizePlayer(r.players) }))
+        .filter((r) => r.players && Number.isFinite(r.players.id))
+        .filter((r) => {
+          const pos = r.players?.position ?? null;
+          const gp = num(r.games_played);
+          const minGp = isPitcher(pos) ? MIN_GAMES_PITCHER_CURRENT : MIN_GAMES_HITTER_CURRENT;
+          return gp >= minGp;
+        });
+
+      const ids = candidates.map((r) => r.player_id);
+
+      const { data: prevRows, error: prevErr } = await supabase
+        .from("player_seasons")
+        .select("player_id,season,war,games_played")
+        .in("player_id", ids)
+        .eq("season", seasonPrev);
+
+      const prevByPlayer = new Map<number, SeasonRow>();
+      if (!prevErr && Array.isArray(prevRows)) {
+        for (const r of prevRows as SeasonRow[]) {
+          const pid = Number((r as any).player_id);
+          if (!Number.isFinite(pid)) continue;
+          prevByPlayer.set(pid, r);
+        }
+      }
+
+      const scored: PlayerCard[] = candidates.map((r) => {
+        const p = r.players as PlayerObj;
+        const pos = p.position ?? null;
+
+        const warCur = num(r.war);
+        const prev = prevByPlayer.get(r.player_id);
+        const warPrev = num(prev?.war);
+
+        let score = WEIGHT_CURRENT * warCur + WEIGHT_PREV * warPrev;
+
+        if (isPitcher(pos)) score *= PITCHER_DAMPEN;
+
+        // Track record penalty
+        const gpPrev = num(prev?.games_played);
+        const minPrev = isPitcher(pos) ? MIN_GAMES_PITCHER_PREV : MIN_GAMES_HITTER_PREV;
+        if (gpPrev < minPrev) score *= 0.92;
+        if (warPrev <= 0) score *= 0.9;
+
+        score *= ageMultiplier(p.age);
+
+        return {
+          id: p.id,
+          name: p.name,
+          team: p.team,
+          position: p.position,
+          age: p.age,
+          image_url: p.image_url,
+          fanScore: score,
+          warCurrent: warCur,
+          warPrev,
+          seasonCurrent,
+        };
+      });
+
+      scored.sort((a, b) => b.fanScore - a.fanScore);
+      topPlayers = scored.slice(0, 10);
+    }
   }
 
   return (
@@ -62,15 +199,15 @@ export default async function HomePage() {
           See who’s actually driving wins
         </h1>
         <p className="mt-4 text-lg text-slate-600 max-w-3xl">
-          MLB Valuations helps you compare players in seconds — rankings, searchable profiles, and a clean value estimate
-          built around real on-field impact. If you follow trades, contracts, or team-building, this is your shortcut.
+          MLB Valuations helps you compare players fast — searchable profiles, season-by-season performance,
+          and a clear way to see who’s impacting games right now.
         </p>
 
         <div className="mt-6 text-slate-600 max-w-3xl">
           <ul className="list-disc list-inside space-y-1">
-            <li>Browse the player list to compare value across the league</li>
-            <li>Search any name to pull up a profile instantly</li>
-            <li>Open a player to see their recent performance and how their value stacks up</li>
+            <li>Browse and search any player to pull up their profile instantly</li>
+            <li>See performance history and trends year over year</li>
+            <li>Understand impact with simple, consistent metrics (explained in Methodology)</li>
           </ul>
         </div>
 
@@ -92,7 +229,12 @@ export default async function HomePage() {
 
       {/* Top players */}
       <section className="mt-10">
-        <h2 className="text-2xl font-semibold tracking-tight">Top 10 Players Right Now</h2>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl font-semibold tracking-tight">Top 10 Players Right Now</h2>
+          <p className="text-sm text-slate-600">
+            Ranked by recent on-field impact, weighted toward the most recent season.
+          </p>
+        </div>
 
         <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
           {topPlayers.map((p, idx) => (
@@ -122,12 +264,7 @@ export default async function HomePage() {
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <div className="text-lg font-bold text-slate-900">
-                    {formatMoneyMillions(p.valuation?.estimatedDollarValue ?? null)}
-                  </div>
-                  <div className="text-xs text-slate-500">Est. value</div>
-                </div>
+                {/* No visible metric on homepage (intentionally) */}
               </div>
             </Link>
           ))}
