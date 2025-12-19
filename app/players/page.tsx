@@ -1,6 +1,9 @@
 // app/players/page.tsx
 import Link from "next/link";
-import { headers } from "next/headers";
+import { supabase } from "@/lib/supabase";
+import { getPlayerValuation } from "@/lib/valuation";
+
+export const dynamic = "force-dynamic";
 
 type PlayerRow = {
   id: number;
@@ -20,14 +23,6 @@ type PlayerRow = {
   };
 };
 
-type PlayersApiResponse = {
-  apiVersion?: string;
-  page: number;
-  pageSize: number;
-  total: number;
-  rows: PlayerRow[];
-};
-
 function toInt(value: string | undefined, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
@@ -42,18 +37,6 @@ function formatMoney(n?: number | null) {
   }).format(n);
 }
 
-async function getBaseUrl() {
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
-  if (siteUrl) return siteUrl;
-
-  const h = await headers();
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
-
 function makeHref(q: string, page: number, limit: number) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
@@ -63,11 +46,6 @@ function makeHref(q: string, page: number, limit: number) {
 }
 
 function getPageItems(current: number, total: number) {
-  // Behavior:
-  // - If total <= 12 => show all
-  // - If near start => show 1..10 ... last
-  // - If near end => show 1 ... last-9..last
-  // - Else => show 1 ... (c-2..c+2) ... last
   const items: (number | "...")[] = [];
   if (total <= 12) {
     for (let i = 1; i <= total; i++) items.push(i);
@@ -80,7 +58,6 @@ function getPageItems(current: number, total: number) {
     for (let i = a; i <= b; i++) items.push(i);
   };
 
-  // near start
   if (c <= 6) {
     pushRange(1, 10);
     items.push("...");
@@ -88,7 +65,6 @@ function getPageItems(current: number, total: number) {
     return items;
   }
 
-  // near end
   if (c >= total - 5) {
     items.push(1);
     items.push("...");
@@ -96,7 +72,6 @@ function getPageItems(current: number, total: number) {
     return items;
   }
 
-  // middle
   items.push(1);
   items.push("...");
   pushRange(c - 2, c + 2);
@@ -122,7 +97,6 @@ function Pager({
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      {/* Prev/Next */}
       <div className="flex items-center gap-2">
         <Link
           aria-disabled={!hasPrev}
@@ -149,7 +123,6 @@ function Pager({
         </Link>
       </div>
 
-      {/* Page numbers */}
       <div className="flex items-center gap-2 flex-wrap">
         {items.map((it, idx) => {
           if (it === "...") {
@@ -177,7 +150,6 @@ function Pager({
         })}
       </div>
 
-      {/* Jump to page */}
       <form action="/players" method="get" className="flex items-center gap-2">
         {q ? <input type="hidden" name="q" value={q} /> : null}
         <input type="hidden" name="limit" value={limit} />
@@ -204,61 +176,109 @@ function Pager({
 export default async function PlayersPage({
   searchParams,
 }: {
-  // ✅ Next.js 16: searchParams is a Promise
-  searchParams?: Promise<{
-    // legacy UI params (kept)
-    q?: string;
-    limit?: string;
-
-    // canonical params (supported for forward compatibility)
-    name?: string;
-    pageSize?: string;
-
-    page?: string;
-  }>;
+  searchParams?: Promise<{ q?: string; page?: string; limit?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-
-  // UI still uses q/limit, but we also accept name/pageSize if present
   const q = (sp.q ?? "").trim();
-  const name = (sp.name ?? sp.q ?? "").trim();
-
   const page = toInt(sp.page, 1);
-
   const limit = toInt(sp.limit, 25);
-  const pageSize = toInt(sp.pageSize ?? sp.limit, 25);
 
-  const baseUrl = await getBaseUrl();
+  const offset = (page - 1) * limit;
 
-  // ✅ API expects name/page/pageSize
-  const apiParams = new URLSearchParams({
-    page: String(page),
-    pageSize: String(pageSize),
+  // ✅ Query players directly (do NOT fetch your own API from SSR)
+  let query = supabase
+    .from("players")
+    .select("id,name,team,position,age,tps,games_played,image_url", { count: "exact" });
+
+  if (q) query = query.ilike("name", `%${q}%`);
+
+  const { data: players, count, error: playersError } = await query
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (playersError) {
+    throw new Error(`Failed to load players: ${playersError.message}`);
+  }
+
+  const safePlayers = (players ?? []) as PlayerRow[];
+  const total = typeof count === "number" ? count : safePlayers.length;
+  const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+
+  if (safePlayers.length === 0) {
+    return (
+      <div className="text-base">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Players</h1>
+            <p className="text-slate-600">Search and open any player to see their current value.</p>
+          </div>
+
+          <form action="/players" method="get" className="flex w-full gap-2 sm:w-auto">
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Search player name…"
+              className="w-full sm:w-96 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-slate-300"
+            />
+            <input type="hidden" name="limit" value={limit} />
+            <button
+              type="submit"
+              className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 shadow-sm"
+            >
+              Search
+            </button>
+          </form>
+        </div>
+
+        <div className="mb-4">
+          <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="px-6 py-14 text-center text-sm text-slate-500">No players found.</div>
+        </div>
+
+        <div className="mt-6">
+          <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Load seasons in one query for valuation (WAR-first)
+  const playerIds = safePlayers.map((p) => p.id);
+
+  const { data: seasons, error: seasonsError } = await supabase
+    .from("player_seasons")
+    .select("player_id,season,tps,games_played,war")
+    .in("player_id", playerIds);
+
+  if (seasonsError) {
+    throw new Error(`Failed to load player seasons: ${seasonsError.message}`);
+  }
+
+  const seasonsByPlayer = new Map<number, any[]>();
+  for (const s of seasons ?? []) {
+    const pid = (s as any).player_id as number;
+    if (!seasonsByPlayer.has(pid)) seasonsByPlayer.set(pid, []);
+    seasonsByPlayer.get(pid)!.push(s);
+  }
+
+  const rows: PlayerRow[] = safePlayers.map((player) => {
+    const playerSeasons = seasonsByPlayer.get(player.id) ?? [];
+    const { valuation } = getPlayerValuation(player as any, playerSeasons);
+    return { ...player, valuation };
   });
-  if (name) apiParams.set("name", name);
 
-  const url = `${baseUrl}/api/players?${apiParams.toString()}`;
-
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok)
-    throw new Error(`Failed to load players: ${res.status} ${res.statusText}`);
-
-  const data = (await res.json()) as PlayersApiResponse;
-
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
-  const effectivePageSize = Number.isFinite(data?.pageSize) ? data.pageSize : pageSize;
-  const total = Number.isFinite(data?.total) ? data.total : 0;
-  const totalPages =
-    effectivePageSize > 0 ? Math.max(1, Math.ceil(total / effectivePageSize)) : 1;
+  // Keep your sort by valuation
+  rows.sort((a, b) => (b.valuation?.estimatedDollarValue ?? 0) - (a.valuation?.estimatedDollarValue ?? 0));
 
   return (
     <div className="text-base">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Players</h1>
-          <p className="text-slate-600">
-            Search and open any player to see their current value.
-          </p>
+          <p className="text-slate-600">Search and open any player to see their current value.</p>
         </div>
 
         <form action="/players" method="get" className="flex w-full gap-2 sm:w-auto">
@@ -278,7 +298,6 @@ export default async function PlayersPage({
         </form>
       </div>
 
-      {/* TOP pager */}
       <div className="mb-4">
         <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
       </div>
@@ -325,12 +344,8 @@ export default async function PlayersPage({
                   </Link>
                 </div>
 
-                <div className="col-span-3 sm:col-span-2 truncate text-sm">
-                  {p.team ?? "—"}
-                </div>
-                <div className="col-span-3 sm:col-span-2 truncate text-sm">
-                  {p.position ?? "—"}
-                </div>
+                <div className="col-span-3 sm:col-span-2 truncate text-sm">{p.team ?? "—"}</div>
+                <div className="col-span-3 sm:col-span-2 truncate text-sm">{p.position ?? "—"}</div>
                 <div className="hidden sm:block sm:col-span-1 text-sm">{p.age ?? "—"}</div>
                 <div className="hidden sm:block sm:col-span-2 text-right text-sm font-semibold">
                   {formatMoney(est)}
@@ -338,16 +353,9 @@ export default async function PlayersPage({
               </div>
             );
           })}
-
-          {rows.length === 0 && (
-            <div className="px-6 py-14 text-center text-sm text-slate-500">
-              No players found.
-            </div>
-          )}
         </div>
       </div>
 
-      {/* BOTTOM pager */}
       <div className="mt-6">
         <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
       </div>
