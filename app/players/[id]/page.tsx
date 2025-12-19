@@ -1,5 +1,3 @@
-// server-client-fix
-
 // app/players/[id]/page.tsx
 import { notFound } from "next/navigation";
 import PlayerChartClient from "./PlayerChartClient";
@@ -39,7 +37,6 @@ export default async function PlayerDetailPage({
   const playerId = Number(id);
   if (!Number.isFinite(playerId) || playerId <= 0) notFound();
 
-  // ✅ Query Supabase directly using SERVER client (service role)
   const { data: player, error: pErr } = await supabaseServer
     .from("players")
     .select("id,name,team,position,age,tps,games_played,image_url")
@@ -69,7 +66,6 @@ export default async function PlayerDetailPage({
     .slice()
     .sort((a, b) => (b.season ?? 0) - (a.season ?? 0));
 
-  // Chart data expects ascending years
   const chartSeasons = safeSeasons
     .slice()
     .sort((a, b) => (a.season ?? 0) - (b.season ?? 0))
@@ -77,7 +73,7 @@ export default async function PlayerDetailPage({
       season: s.season,
       war: s.war ?? null,
       games: s.games_played ?? null,
-      team: s.team ?? player.team ?? null, // fallback if season team missing
+      team: s.team ?? player.team ?? null,
     }));
 
   return (
@@ -100,31 +96,35 @@ export default async function PlayerDetailPage({
                 <div className="mt-1 text-sm text-slate-600">
                   {player.team ?? "—"} · {player.position ?? "—"} · Age {player.age ?? "—"}
                 </div>
+
+                {/* ✅ New framing copy */}
+                <p className="mt-2 text-sm text-slate-600">
+                  Snapshot of recent performance and role stability. Not a projection or betting advice.
+                </p>
               </div>
             </div>
 
+            {/* ✅ Label renames only (no logic changes) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold text-slate-500">WAR Used</div>
+                <div className="text-xs font-semibold text-slate-500">Recent Impact</div>
                 <div className="text-lg font-bold text-slate-900">{warUsed ?? "—"}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold text-slate-500">TPS Modifier</div>
+                <div className="text-xs font-semibold text-slate-500">Stability</div>
                 <div className="text-lg font-bold text-slate-900">{tpsMod ?? "—"}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold text-slate-500">Est. Value</div>
+                <div className="text-xs font-semibold text-slate-500">Long-Term Context</div>
                 <div className="text-lg font-bold text-slate-900">{formatMoney(est)}</div>
               </div>
             </div>
           </div>
 
-          {/* ✅ Client-rendered chart */}
           <div className="mt-6">
             <PlayerChartClient playerName={player.name} seasons={chartSeasons} />
           </div>
 
-          {/* Table */}
           <div className="mt-6 overflow-hidden rounded-lg border border-slate-200">
             <div className="grid grid-cols-12 gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500 border-b border-slate-200">
               <div className="col-span-2">Season</div>
@@ -136,10 +136,7 @@ export default async function PlayerDetailPage({
 
             <div className="divide-y divide-slate-200 bg-white">
               {seasonsDesc.map((s, idx) => (
-                <div
-                  key={`${s.season}-${idx}`}
-                  className="grid grid-cols-12 gap-3 px-4 py-3 text-sm"
-                >
+                <div key={`${s.season}-${idx}`} className="grid grid-cols-12 gap-3 px-4 py-3 text-sm">
                   <div className="col-span-2 font-semibold">{s.season}</div>
                   <div className="col-span-4 truncate">{s.team ?? player.team ?? "—"}</div>
                   <div className="col-span-2 text-right tabular-nums">{fmt2(s.war ?? null)}</div>
