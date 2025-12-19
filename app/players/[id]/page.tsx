@@ -107,24 +107,24 @@ function outlookBadge(label: Outlook["label"]) {
   switch (label) {
     case "Up":
       return {
-        icon: <ArrowUpRight className="h-5 w-5" />,
+        icon: <ArrowUpRight className="h-6 w-6 stroke-[2.5]" />,
         textClass: "text-emerald-700",
         bgClass: "bg-emerald-50",
-        borderClass: "border-emerald-200",
+        borderClass: "border-emerald-300",
       };
     case "Down":
       return {
-        icon: <ArrowDownRight className="h-5 w-5" />,
+        icon: <ArrowDownRight className="h-6 w-6 stroke-[2.5]" />,
         textClass: "text-amber-800",
         bgClass: "bg-amber-50",
-        borderClass: "border-amber-200",
+        borderClass: "border-amber-300",
       };
     default:
       return {
-        icon: <ArrowRight className="h-5 w-5" />,
+        icon: <ArrowRight className="h-6 w-6 stroke-[2.5]" />,
         textClass: "text-slate-700",
         bgClass: "bg-slate-50",
-        borderClass: "border-slate-200",
+        borderClass: "border-slate-300",
       };
   }
 }
