@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import PlayerChartClient from "./PlayerChartClient";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getPlayerValuation } from "@/lib/valuation";
+import { ArrowUpRight, ArrowRight, ArrowDownRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,6 @@ type Outlook = {
   reasons: string[];
 };
 
-// v1: uses only last 2–3 seasons WAR + games played.
-// This is NOT a projection; it's a recent-trajectory signal.
 function computeOutlook(seasonsDesc: SeasonRow[]): Outlook {
   const last3 = seasonsDesc
     .filter((s) => Number.isFinite(s.season))
@@ -51,7 +50,6 @@ function computeOutlook(seasonsDesc: SeasonRow[]): Outlook {
   const gp0 = s0?.games_played ?? null;
   const gp1 = s1?.games_played ?? null;
 
-  // Default if we don't have enough data
   if (war0 == null || war1 == null) {
     return {
       label: "Steady",
@@ -62,7 +60,6 @@ function computeOutlook(seasonsDesc: SeasonRow[]): Outlook {
 
   const delta = war0 - war1;
 
-  // Direction thresholds (tuned to feel reasonable, not hypersensitive)
   const upThresh = 0.75;
   const downThresh = -0.75;
 
@@ -70,35 +67,28 @@ function computeOutlook(seasonsDesc: SeasonRow[]): Outlook {
   if (delta >= upThresh) label = "Up";
   else if (delta <= downThresh) label = "Down";
 
-  // Confidence based on playing-time stability
-  // (We don't know pitcher IP, so games_played is imperfect but usable for v1.)
-  const gpMinHigh = 120; // "full-ish season" for hitters
+  const gpMinHigh = 120;
   const gpMinMed = 70;
 
   let confidence: Outlook["confidence"] = "Medium";
   if ((gp0 != null && gp0 < gpMinMed) || (gp1 != null && gp1 < gpMinMed)) confidence = "Low";
   else if ((gp0 != null && gp0 >= gpMinHigh) && (gp1 != null && gp1 >= gpMinHigh)) confidence = "High";
 
-  // Reasons: short, non-technical, defensible
   const reasons: string[] = [];
 
-  // 1) Recent impact level
   if (war0 >= 6) reasons.push("Elite recent impact.");
   else if (war0 >= 4) reasons.push("All-Star level recent impact.");
   else if (war0 >= 2) reasons.push("Above-average recent impact.");
   else if (war0 >= 0) reasons.push("Around league-average recent impact.");
   else reasons.push("Recent impact has been below average.");
 
-  // 2) Trajectory
   if (label === "Up") reasons.push("Improving year over year.");
   if (label === "Down") reasons.push("Declined year over year.");
   if (label === "Steady") reasons.push("Similar level year over year.");
 
-  // 3) Playing time note
   if (confidence === "Low") reasons.push("Lower playing time makes signal less stable.");
   if (confidence === "High") reasons.push("Stable playing time supports signal.");
 
-  // Optional: use 3rd season as a consistency note
   if (s2?.war != null && Number.isFinite(s2.war)) {
     const war2 = s2.war as number;
     const avg3 = (war0 + war1 + war2) / 3;
@@ -106,12 +96,44 @@ function computeOutlook(seasonsDesc: SeasonRow[]): Outlook {
     if (avg3 < 2 && label === "Up") reasons.push("Recent improvement stands out vs. prior baseline.");
   }
 
-  // Keep to 3 reasons max for readability
   return {
     label,
     confidence,
     reasons: reasons.slice(0, 3),
   };
+}
+
+function outlookBadge(label: Outlook["label"]) {
+  switch (label) {
+    case "Up":
+      return {
+        icon: <ArrowUpRight className="h-5 w-5" />,
+        textClass: "text-emerald-700",
+        bgClass: "bg-emerald-50",
+        borderClass: "border-emerald-200",
+      };
+    case "Down":
+      return {
+        icon: <ArrowDownRight className="h-5 w-5" />,
+        textClass: "text-amber-800",
+        bgClass: "bg-amber-50",
+        borderClass: "border-amber-200",
+      };
+    default:
+      return {
+        icon: <ArrowRight className="h-5 w-5" />,
+        textClass: "text-slate-700",
+        bgClass: "bg-slate-50",
+        borderClass: "border-slate-200",
+      };
+  }
+}
+
+function confidencePill(conf: Outlook["confidence"]) {
+  // Subtle cue: higher confidence slightly stronger text color
+  if (conf === "High") return "text-slate-900 bg-slate-100 border-slate-200";
+  if (conf === "Low") return "text-slate-700 bg-white border-slate-200";
+  return "text-slate-800 bg-slate-50 border-slate-200";
 }
 
 export default async function PlayerDetailPage({
@@ -144,7 +166,6 @@ export default async function PlayerDetailPage({
 
   const { valuation } = getPlayerValuation(player as any, safeSeasons as any);
 
-  // Keep these as-is (you may change later), we’re just relabeling/positioning.
   const recentImpactValue = valuation?.breakdown?.warUsed ?? null;
   const stabilityValue = valuation?.breakdown?.tpsModifier ?? null;
   const longTermContextValue = valuation?.estimatedDollarValue ?? null;
@@ -164,6 +185,7 @@ export default async function PlayerDetailPage({
     }));
 
   const outlook = computeOutlook(seasonsDesc);
+  const badge = outlookBadge(outlook.label);
 
   return (
     <div className="text-base">
@@ -208,28 +230,39 @@ export default async function PlayerDetailPage({
             </div>
           </div>
 
-          {/* ✅ Player Outlook v1 */}
-          <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* ✅ Player Outlook v1 w/ subtle color + arrow icons */}
+          <div className={`mt-6 rounded-xl border ${badge.borderClass} ${badge.bgClass} shadow-sm`}>
             <div className="p-5 sm:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Player Outlook
-                  </div>
-                  <div className="mt-1 text-xl font-bold text-slate-900">
-                    {outlook.label}{" "}
-                    <span className="text-sm font-semibold text-slate-500">
-                      · Confidence: {outlook.confidence}
-                    </span>
+                <div className="flex items-start gap-3">
+                  <div className={`${badge.textClass} mt-0.5`}>{badge.icon}</div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Player Outlook
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <div className={`text-xl font-bold ${badge.textClass}`}>
+                        {outlook.label}
+                      </div>
+
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${confidencePill(
+                          outlook.confidence
+                        )}`}
+                      >
+                        Confidence: {outlook.confidence}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-600">
                   Based on recent season impact and playing-time stability.
                 </div>
               </div>
 
-              <ul className="mt-4 list-disc pl-5 text-sm text-slate-700 space-y-1">
+              <ul className="mt-4 list-disc pl-5 text-sm text-slate-800 space-y-1">
                 {outlook.reasons.map((r, i) => (
                   <li key={i}>{r}</li>
                 ))}
