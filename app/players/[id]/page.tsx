@@ -1,3 +1,5 @@
+// server-client-fix
+
 // app/players/[id]/page.tsx
 import { notFound } from "next/navigation";
 import PlayerChartClient from "./PlayerChartClient";
