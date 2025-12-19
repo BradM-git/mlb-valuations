@@ -1,425 +1,306 @@
-interface Player {
+// lib/valuation.ts
+// WAR-first valuation. WAR = production. TPS = small modifier.
+// Backwards-compatible: exposes BOTH fanValueIndex and tradeValueIndex.
+
+export interface Player {
   age: number | null
   position: string
   tps?: number
-  yearsControl?: number
-  salary?: number
+  games_played?: number | null
 }
 
-interface SeasonStats {
+export interface SeasonStats {
   season: number
   tps: number
-  war: number
   games_played: number
-  batting_avg?: number
-  walks?: number
-  strikeouts?: number
-  home_runs?: number
-  stolen_bases?: number
-  at_bats?: number
+  war?: number | null
 }
 
-interface PlayerHistoricalData {
+export interface PlayerHistoricalData {
   seasons: SeasonStats[]
   currentTPS: number
   threeYearAvgTPS?: number
   careerPeakTPS?: number
-  yearsElite?: number // Seasons with TPS > 4.0
+  yearsElite?: number
   consistencyScore?: number
-  plateDisciplineScore?: number
-  speedScore?: number
-  powerScore?: number
+
+  currentWAR?: number
+  threeYearAvgWAR?: number
+  careerPeakWAR?: number
 }
 
-interface ValuationBreakdown {
+export interface TradeValueBreakdown {
+  // 👇 alias so existing pages don’t break
+  fanValueIndex: number
+
   tradeValueIndex: number
   estimatedDollarValue: number
   breakdown: {
-    performanceScore: number
-    ageFactor: number
+    warUsed: number
+    tpsUsed: number
+    tpsModifier: number
+    age: number
     positionFactor: number
-    controlFactor: number
-    eliteSkillPremium?: number
-    consistencyBonus?: number
-    trackRecordMultiplier?: number
+    playingTimeFactor: number
+    horizonYears: number
+    pv: number
   }
 }
 
-// Base value: $8M per TPS point (WAR standard)
-const WAR_VALUE = 8_000_000
+/* -----------------------
+   Constants
+------------------------ */
 
-// ============================================================================
-// CORE AGE CURVE - Peak Performance > Youth, BUT Elite Players Age Better
-// ============================================================================
-function getAgeFactor(age: number | null, currentTPS?: number): number {
-  if (!age) return 1.0
-  
-  // If player is currently elite (TPS 45+), soften age penalties
-  const isCurrentlyElite = currentTPS && currentTPS >= 45.0
-  
-  // Young prospects - valuable but not more than proven stars
-  if (age <= 23) return 1.04  // High upside (reduced from 1.05)
-  if (age <= 25) return 1.06  // Entering prime (reduced from 1.08)
-  
-  // THE PEAK - Proven elite players in their prime are MOST valuable
-  if (age <= 29) return 1.12  // Prime window - peak value
-  if (age === 30) return 1.10  // Still in prime
-  
-  // Decline phase - but elite performers decline slower
-  if (age === 31) return isCurrentlyElite ? 1.02 : 1.00  // Elite players at 31 still very valuable
-  if (age === 32) return 0.92  // Early decline
-  if (age === 33) return isCurrentlyElite ? 0.88 : 0.80  // Elite players maintain value longer
-  if (age === 34) return isCurrentlyElite ? 0.82 : 0.72  // Elite players decline slower
-  if (age <= 36) return isCurrentlyElite ? 0.70 : 0.62
-  return 0.45
+const DOLLARS_PER_WAR_FAN = 11_000_000
+const DISCOUNT_RATE = 0.06
+
+/* -----------------------
+   Helpers
+------------------------ */
+
+function pv(amount: number, year: number): number {
+  return amount / Math.pow(1 + DISCOUNT_RATE, year)
 }
 
-// ============================================================================
-// REDUCED POSITION MULTIPLIERS - Elite Talent > Position Scarcity
-// ============================================================================
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n))
+}
+
+function safeNumber(n: any, fallback = 0): number {
+  const x = Number(n)
+  return Number.isFinite(x) ? x : fallback
+}
+
+function isPitcher(pos: string): boolean {
+  return ['SP', 'RP', 'P'].includes((pos || '').toUpperCase())
+}
+
 function getPositionFactor(position: string): number {
-  const scarcity: { [key: string]: number } = {
-    'SS': 1.00,   // Shortstop - NO premium (too many SS in top 10)
-    'C': 1.00,    // Catcher - NO premium
-    'CF': 1.00,   // Center field - NO premium
-    '3B': 1.00,   // Third base
-    '2B': 1.00,   // Second base
-    '1B': 0.99,   // First base - slight penalty
-    'LF': 0.99,   // Left field - slight penalty
-    'RF': 0.99,   // Right field - slight penalty
-    'SP': 1.01,   // Starting pitcher - minimal premium
-    'RP': 0.85,   // Relief pitcher
-    'DH': 0.90,   // Designated hitter
-    'TWP': 1.0,   // Two-way player (base, before elite premium)
-  }
-  
-  return scarcity[position] || 1.0
-}
-
-// ============================================================================
-// ELITE SKILL PREMIUMS - Detect Generational Talents
-// ============================================================================
-function getEliteSkillPremium(
-  player: Player, 
-  historicalData?: PlayerHistoricalData
-): number {
-  let premium = 1.0
-  
-  // TWO-WAY PLAYER PREMIUM (Literally only Ohtani)
-  // This is the most unique skill in baseball - should dominate valuation
-  if (player.position === 'TWP') {
-    premium *= 1.27  // Unprecedented two-way value (increased from 1.25)
-  }
-  
-  if (!historicalData) return premium
-  
-  const { 
-    plateDisciplineScore, 
-    powerScore, 
-    speedScore,
-    yearsElite,
-    currentTPS 
-  } = historicalData
-  
-  // GENERATIONAL PLATE DISCIPLINE (Soto, Judge)
-  // Elite BB% + low K% + high TPS = ages extremely well
-  if (plateDisciplineScore && plateDisciplineScore >= 85) {
-    premium *= 1.12  // Elite eye at the plate (increased from 1.10)
-  } else if (plateDisciplineScore && plateDisciplineScore >= 75) {
-    premium *= 1.06  // Very good plate discipline (increased from 1.05)
-  }
-  
-  // ELITE POWER + CONSISTENCY (Judge, Stanton when healthy)
-  if (powerScore && powerScore >= 90 && currentTPS >= 45.0) {
-    premium *= 1.08  // Game-changing power (increased from 1.06)
-  } else if (powerScore && powerScore >= 80 && currentTPS >= 40.0) {
-    premium *= 1.04  // Very good power
-  }
-  
-  // ELITE SPEED + BASERUNNING (De La Cruz, Acuña)
-  if (speedScore && speedScore >= 85 && currentTPS >= 4.0) {
-    premium *= 1.06  // Dynamic baserunning threat (increased from 1.04)
-  }
-  
-  // SUSTAINED EXCELLENCE BONUS (3+ truly elite years, TPS >= 40)
-  // NOTE: These bonuses should be SMALLER than raw performance differences
-  if (yearsElite && yearsElite >= 3) {
-    premium *= 1.06  // Proven track record (reduced from 1.10)
-  }
-  
-  // SUPER ELITE BONUS (5+ elite years) - Generational talents
-  if (yearsElite && yearsElite >= 5) {
-    premium *= 1.05  // Additional bonus for true superstars (reduced from 1.08)
-  }
-  
-  // ULTRA ELITE (7+ elite years) - Hall of Fame trajectory
-  if (yearsElite && yearsElite >= 7) {
-    premium *= 1.03  // Sustained greatness (reduced from 1.05)
-  }
-  
-  return premium
-}
-
-// ============================================================================
-// TRACK RECORD MULTIPLIER - Prevent One-Year Wonders
-// ============================================================================
-function getTrackRecordMultiplier(historicalData?: PlayerHistoricalData): number {
-  if (!historicalData || !historicalData.seasons || historicalData.seasons.length === 0) {
-    return 0.75 // HEAVILY penalize players with no history (likely breakouts or flukes)
-  }
-  
-  const { seasons, currentTPS, threeYearAvgTPS, yearsElite, consistencyScore } = historicalData
-  
-  // Rookie or 1-year player
-  if (seasons.length === 1) {
-    // High TPS rookie could be legit (like Witt Jr's debut)
-    if (currentTPS >= 5.0) return 0.88
-    return 0.75  // One year = high risk (reduced from 0.80)
-  }
-  
-  // 2-year players
-  if (seasons.length === 2) {
-    if (yearsElite && yearsElite >= 2) return 0.92
-    return 0.83  // Reduced from 0.88
-  }
-  
-  // 3+ year track record
-  if (threeYearAvgTPS && currentTPS) {
-    const dropoff = currentTPS - threeYearAvgTPS
-    
-    // Major breakout year (sudden spike without sustained elite performance)
-    if (dropoff > 2.0 && yearsElite && yearsElite < 2) {
-      return 0.78  // MORE skeptical of sudden spike
-    }
-    
-    // Consistent elite performer (TPS consistently >= 40)
-    if (consistencyScore && consistencyScore >= 80 && yearsElite && yearsElite >= 3) {
-      return 1.15  // Proven excellence (increased from 1.12)
-    }
-    
-    // Solid 3+ year starter (above average but not elite)
-    if (threeYearAvgTPS >= 35.0) {
-      return 1.04  // Established player (increased from 1.03)
-    }
-  }
-  
-  return 1.0 // Default for 3+ years
-}
-
-// ============================================================================
-// CONSISTENCY BONUS - Reward Reliable Performance
-// ============================================================================
-function getConsistencyBonus(historicalData?: PlayerHistoricalData): number {
-  if (!historicalData || !historicalData.consistencyScore) {
-    return 1.0
-  }
-  
-  const score = historicalData.consistencyScore
-  
-  if (score >= 90) return 1.05  // Extremely reliable (rare)
-  if (score >= 80) return 1.03  // Very consistent
-  if (score >= 70) return 1.01  // Above average consistency
-  return 1.0
-}
-
-// ============================================================================
-// TEAM CONTROL MULTIPLIER
-// ============================================================================
-function getControlFactor(yearsControl?: number): number {
-  if (!yearsControl) return 1.0 // Assume average control
-  
-  if (yearsControl >= 4) return 1.5  // Extremely valuable
-  if (yearsControl >= 2) return 1.2  // Good control
-  if (yearsControl >= 1) return 1.0  // Rental
-  return 0.8 // Free agent pending
-}
-
-// ============================================================================
-// PERFORMANCE SCORE (0-100)
-// ============================================================================
-function getPerformanceScore(tps?: number): number {
-  if (!tps) return 50
-  const score = Math.min(Math.max(tps * 10, 0), 100)
-  return Math.round(score)
-}
-
-// ============================================================================
-// CALCULATE HISTORICAL METRICS FROM SEASONS DATA
-// ============================================================================
-export function calculateHistoricalMetrics(seasons: SeasonStats[]): PlayerHistoricalData {
-  if (!seasons || seasons.length === 0) {
-    return {
-      seasons: [],
-      currentTPS: 0
-    }
-  }
-  
-  // Sort by season descending (most recent first)
-  const sorted = [...seasons].sort((a, b) => b.season - a.season)
-  const currentTPS = sorted[0].tps
-  
-  // 3-year average TPS
-  const recentThree = sorted.slice(0, 3)
-  const threeYearAvgTPS = recentThree.reduce((sum, s) => sum + s.tps, 0) / recentThree.length
-  
-  // Career peak TPS
-  const careerPeakTPS = Math.max(...sorted.map(s => s.tps))
-  
-  // Years elite (TPS >= 40 for truly elite seasons)
-  const yearsElite = sorted.filter(s => s.tps >= 40.0).length
-  
-  // Consistency score (how stable is performance)
-  const tpsValues = sorted.map(s => s.tps)
-  const mean = tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length
-  const variance = tpsValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / tpsValues.length
-  const stdDev = Math.sqrt(variance)
-  const coefficientOfVariation = (stdDev / mean) * 100
-  const consistencyScore = Math.max(0, Math.min(100, 100 - coefficientOfVariation))
-  
-  // Plate discipline score (if we have the data)
-  let plateDisciplineScore: number | undefined
-  const recentSeason = sorted[0]
-  if (recentSeason.walks && recentSeason.strikeouts && recentSeason.at_bats) {
-    const bbRate = (recentSeason.walks / recentSeason.at_bats) * 100
-    const kRate = (recentSeason.strikeouts / recentSeason.at_bats) * 100
-    
-    // Elite plate discipline: High BB%, Low K%
-    // Soto: ~18% BB, ~16% K = Elite
-    // Judge: ~15% BB, ~24% K = Very Good
-    const disciplineRating = (bbRate * 2) - (kRate * 0.5) + 50
-    plateDisciplineScore = Math.max(0, Math.min(100, disciplineRating))
-  }
-  
-  // Speed score (stolen bases + games played)
-  let speedScore: number | undefined
-  if (recentSeason.stolen_bases && recentSeason.games_played) {
-    const sbPer100 = (recentSeason.stolen_bases / recentSeason.games_played) * 100
-    speedScore = Math.min(100, sbPer100 * 3) // Normalize to 0-100
-  }
-  
-  // Power score (home runs + games played)
-  let powerScore: number | undefined
-  if (recentSeason.home_runs && recentSeason.games_played) {
-    const hrPer100 = (recentSeason.home_runs / recentSeason.games_played) * 100
-    powerScore = Math.min(100, hrPer100 * 2) // Normalize to 0-100
-  }
-  
+  const p = (position || '').toUpperCase()
   return {
-    seasons: sorted,
+    SS: 1.06,
+    C: 1.05,
+    CF: 1.04,
+    '2B': 1.02,
+    '3B': 1.02,
+    RF: 1.01,
+    LF: 1.0,
+    '1B': 0.98,
+    DH: 0.95,
+    SP: 1.0,
+    RP: 0.88,
+    P: 1.0,
+    TWP: 1.1,
+  }[p] ?? 1.0
+}
+
+function playingTimeFactor(g?: number | null): number {
+  const gp = safeNumber(g, 0)
+  if (gp <= 0) return 0.92
+  return 0.85 + 0.15 * clamp(gp / 162, 0.35, 1)
+}
+
+function fanHorizonYears(age: number, position: string): number {
+  const pitcher = isPitcher(position)
+  const base = pitcher ? 4 : 6
+  const adj = clamp(31 - age, -3, 6)
+  return clamp(base + Math.floor(adj / 2), pitcher ? 3 : 4, pitcher ? 6 : 8)
+}
+
+/* -----------------------
+   Historical Metrics
+------------------------ */
+
+export function calculateHistoricalMetrics(seasons: SeasonStats[]): PlayerHistoricalData {
+  if (!seasons.length) return { seasons: [], currentTPS: 0 }
+
+  const s = [...seasons].sort((a, b) => b.season - a.season)
+
+  const currentTPS = safeNumber(s[0].tps)
+  const recent = s.slice(0, 3)
+
+  const threeYearAvgTPS =
+    recent.reduce((sum, x) => sum + safeNumber(x.tps), 0) / recent.length
+
+  const tpsVals = s.map(x => safeNumber(x.tps))
+  const mean = tpsVals.reduce((a, b) => a + b, 0) / tpsVals.length
+  const variance =
+    tpsVals.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / tpsVals.length
+  const consistencyScore = clamp(100 - Math.sqrt(variance), 0, 100)
+
+  const warVals = s.map(x => x.war).filter(x => x != null) as number[]
+
+  return {
+    seasons: s,
     currentTPS,
     threeYearAvgTPS,
-    careerPeakTPS,
-    yearsElite,
+    careerPeakTPS: Math.max(...tpsVals),
+    yearsElite: tpsVals.filter(x => x >= 40).length,
     consistencyScore,
-    plateDisciplineScore,
-    speedScore,
-    powerScore
+
+    currentWAR: s[0].war ?? undefined,
+    threeYearAvgWAR:
+      warVals.length >= 3
+        ? warVals.slice(0, 3).reduce((a, b) => a + b, 0) / 3
+        : undefined,
+    careerPeakWAR: warVals.length ? Math.max(...warVals) : undefined,
   }
 }
 
-// ============================================================================
-// MAIN VALUATION FUNCTION - GM-REALISTIC MODEL
-// ============================================================================
-export function calculateTradeValue(
-  player: Player, 
-  tps?: number,
-  historicalData?: PlayerHistoricalData
-): ValuationBreakdown {
-  // Use provided TPS, or player's TPS, or default to 2.0
-  let playerTPS = tps ?? player.tps ?? 2.0
-  
-  // CRITICAL: Balance current performance with historical average
-  // GMs value both recent performance AND sustained excellence
-  if (historicalData && historicalData.threeYearAvgTPS && historicalData.seasons.length >= 3) {
-    const currentTPS = playerTPS
-    const historicalAvg = historicalData.threeYearAvgTPS
-    
-    // Calculate decline/improvement
-    const tpsChange = currentTPS - historicalAvg
-    const percentChange = (tpsChange / historicalAvg) * 100
-    
-    // If player is significantly declining (>10% drop from historical), penalize heavily
-    if (percentChange < -10) {
-      // Major decline: 80% current, 20% historical (recent form matters most)
-      playerTPS = (currentTPS * 0.8) + (historicalAvg * 0.2)
-    } else if (percentChange < -5) {
-      // Moderate decline: 70% current, 30% historical
-      playerTPS = (currentTPS * 0.7) + (historicalAvg * 0.3)
-    } else if (percentChange < 5) {
-      // Stable: 50/50 blend
-      playerTPS = (currentTPS * 0.5) + (historicalAvg * 0.5)
-    } else {
-      // Improving: 60% current, 40% historical (reward current excellence)
-      playerTPS = (currentTPS * 0.6) + (historicalAvg * 0.4)
-    }
-  } else if (historicalData && historicalData.seasons.length === 2) {
-    // For 2-year players, use 60/40 blend
-    const twoYearAvg = historicalData.seasons.slice(0, 2).reduce((sum, s) => sum + s.tps, 0) / 2
-    playerTPS = (playerTPS * 0.6) + (twoYearAvg * 0.4)
-  }
-  
-  // Calculate base value from TPS
-  const performanceValue = playerTPS * WAR_VALUE
-  
-  // Get all multipliers
-  const ageFactor = getAgeFactor(player.age, playerTPS)  // Pass current TPS for elite aging
-  const positionFactor = getPositionFactor(player.position)
-  const controlFactor = getControlFactor(player.yearsControl)
-  const eliteSkillPremium = getEliteSkillPremium(player, historicalData)
-  const trackRecordMultiplier = getTrackRecordMultiplier(historicalData)
-  const consistencyBonus = getConsistencyBonus(historicalData)
-  
-  // COMPREHENSIVE CALCULATION
-  const estimatedDollarValue = Math.round(
-    performanceValue * 
-    ageFactor * 
-    positionFactor * 
-    controlFactor * 
-    eliteSkillPremium * 
-    trackRecordMultiplier * 
-    consistencyBonus
+/* -----------------------
+   Core valuation logic
+------------------------ */
+
+function blendedWAR(h?: PlayerHistoricalData): number {
+  if (!h?.seasons?.length) return 0
+
+  const s = h.seasons
+  const w1 = s[0]?.war ?? null
+  const w2 = s[1]?.war ?? null
+  const w3 = s[2]?.war ?? null
+
+  if (w1 != null && w2 != null && w3 != null) return w1 * 0.5 + w2 * 0.3 + w3 * 0.2
+  if (w1 != null && w2 != null) return w1 * 0.625 + w2 * 0.375
+  return w1 ?? 0
+}
+
+function blendedTPS(tps: number, h?: PlayerHistoricalData): number {
+  if (!h?.seasons?.length) return tps
+  return tps * 0.65 + safeNumber(h.threeYearAvgTPS, tps) * 0.35
+}
+
+function tpsModifier(tps: number): number {
+  return clamp(1 + ((tps - 25) / 25) * 0.06, 0.92, 1.08)
+}
+
+function computeIndex(
+  war: number,
+  tps: number,
+  age: number,
+  pos: number,
+  pt: number
+): number {
+  const warScore = clamp((war / 8) * 100, 0, 100)
+  const ageAdj =
+    age <= 23 ? 6 :
+    age <= 26 ? 4 :
+    age <= 29 ? 2 :
+    age <= 31 ? 0 :
+    age <= 33 ? -3 :
+    age <= 35 ? -6 : -10
+
+  return Math.round(
+    clamp(
+      warScore +
+        ageAdj +
+        (pos - 1) * 50 +
+        (pt - 0.92) * 60 +
+        (tpsModifier(tps) - 1) * 60,
+      0,
+      100
+    )
   )
-  
-  // Calculate 0-100 Trade Value Index (for secondary display)
-  let tradeValueIndex = Math.round((estimatedDollarValue / 60_000_000) * 100)
-  tradeValueIndex = Math.min(tradeValueIndex, 100)
-  
-  // Get performance score (use the blended TPS)
-  const performanceScore = getPerformanceScore(playerTPS)
-  
+}
+
+function estimatePV(
+  player: Player,
+  war: number,
+  tps: number,
+  h?: PlayerHistoricalData
+) {
+  const age = safeNumber(player.age, 27)
+  const horizon = fanHorizonYears(age, player.position)
+  const pos = getPositionFactor(player.position)
+  const pt = playingTimeFactor(player.games_played)
+  const tpsMod = tpsModifier(tps)
+
+  let total = 0
+  for (let y = 1; y <= horizon; y++) {
+    total += pv(war * DOLLARS_PER_WAR_FAN * pos * pt * tpsMod, y)
+  }
+
+  if (h?.consistencyScore)
+    total *= clamp(h.consistencyScore / 100, 0.9, 1.05)
+
+  return { total, pos, pt, horizon, age, tpsMod }
+}
+
+/* -----------------------
+   PUBLIC API
+------------------------ */
+
+export function calculateTradeValue(
+  player: any,
+  _legacy?: any,
+  historical?: PlayerHistoricalData
+): TradeValueBreakdown {
+  const p: Player = {
+    age: player.age,
+    position: player.position,
+    tps: player.tps,
+    games_played: player.games_played ?? player.gamesPlayed,
+  }
+
+  const h = historical
+  const warUsed = blendedWAR(h)
+  const tpsUsed = blendedTPS(safeNumber(p.tps), h)
+
+  const { total, pos, pt, horizon, age, tpsMod } = estimatePV(
+    p,
+    warUsed,
+    tpsUsed,
+    h
+  )
+
+  const tradeValueIndex = computeIndex(warUsed, tpsUsed, age, pos, pt)
+
   return {
+    fanValueIndex: tradeValueIndex, // alias
     tradeValueIndex,
-    estimatedDollarValue,
+    estimatedDollarValue: Math.round(total),
     breakdown: {
-      performanceScore,
-      ageFactor: Math.round(ageFactor * 100),
-      positionFactor: Math.round(positionFactor * 100),
-      controlFactor: Math.round(controlFactor * 100),
-      eliteSkillPremium: Math.round(eliteSkillPremium * 100),
-      consistencyBonus: Math.round(consistencyBonus * 100),
-      trackRecordMultiplier: Math.round(trackRecordMultiplier * 100)
-    }
+      warUsed: Number(warUsed.toFixed(2)),
+      tpsUsed: Number(tpsUsed.toFixed(2)),
+      tpsModifier: Number(tpsMod.toFixed(3)),
+      age,
+      positionFactor: Math.round(pos * 100),
+      playingTimeFactor: Math.round(pt * 100),
+      horizonYears: horizon,
+      pv: Math.round(total),
+    },
   }
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
+export function getPlayerValuation(player: any, seasons: any[]) {
+  const mapped = seasons.map(s => ({
+    season: s.season,
+    tps: safeNumber(s.tps),
+    games_played: safeNumber(s.games_played),
+    war: s.war,
+  }))
+
+  const historical = mapped.length ? calculateHistoricalMetrics(mapped) : undefined
+  return { valuation: calculateTradeValue(player, null, historical), historicalData: historical }
+}
+
+/* -----------------------
+   Display helpers
+------------------------ */
+
 export function formatDollarValue(value: number): string {
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`
-  }
-  return `$${(value / 1_000).toFixed(0)}K`
+  if (value >= 1_000_000_000) return `$${(value / 1e9).toFixed(2)}B`
+  if (value >= 1_000_000) return `$${(value / 1e6).toFixed(1)}M`
+  return `$${value.toLocaleString()}`
 }
 
 export function getRatingLabel(index: number): string {
-  if (index >= 90) return 'Elite'
-  if (index >= 80) return 'Star'
-  if (index >= 70) return 'Above Average'
-  if (index >= 60) return 'Solid Starter'
-  if (index >= 50) return 'Average'
-  if (index >= 40) return 'Below Average'
-  return 'Backup'
+  if (index >= 90) return 'MVP'
+  if (index >= 80) return 'All-Star'
+  if (index >= 70) return 'Great'
+  if (index >= 60) return 'Very Good'
+  if (index >= 50) return 'Good'
+  if (index >= 40) return 'Average'
+  return 'Role Player'
 }
 
 export function getRatingColor(index: number): string {

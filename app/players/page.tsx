@@ -1,332 +1,356 @@
-'use client'
+// app/players/page.tsx
+import Link from "next/link";
+import { headers } from "next/headers";
 
-import { supabase } from '@/lib/supabase'
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { calculateTradeValue, calculateHistoricalMetrics, formatDollarValue } from '@/lib/valuation'
+type PlayerRow = {
+  id: number;
+  name: string;
+  team: string | null;
+  position: string | null;
+  age: number | null;
+  tps: number | null;
+  games_played: number | null;
+  image_url: string | null;
+  valuation?: {
+    estimatedDollarValue?: number | null;
+    breakdown?: {
+      warUsed?: number | null;
+      tpsModifier?: number | null;
+    };
+  };
+};
 
-interface Player {
-  id: number
-  name: string
-  team: string
-  position: string
-  age: number
-  war?: number
-  tps?: number
-  image_url: string
+type PlayersApiResponse = {
+  apiVersion?: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  rows: PlayerRow[];
+};
+
+function toInt(value: string | undefined, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
-interface SeasonStats {
-  season: number
-  tps: number
-  war: number
-  games_played: number
-  batting_avg?: number
-  walks?: number
-  strikeouts?: number
-  home_runs?: number
-  stolen_bases?: number
-  at_bats?: number
-  age: number
-  team: string
-  position: string
+function formatMoney(n?: number | null) {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
 }
 
-interface PlayerWithETV extends Player {
-  etv: number
+async function getBaseUrl() {
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  if (siteUrl) return siteUrl;
+
+  const h = await headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}`;
 }
 
-export default function PlayersPage() {
-  const [players, setPlayers] = useState<PlayerWithETV[]>([])
-  const [filteredPlayers, setFilteredPlayers] = useState<PlayerWithETV[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [teamFilter, setTeamFilter] = useState('all')
-  const [positionFilter, setPositionFilter] = useState('all')
-  const [sortBy, setSortBy] = useState<'name' | 'team' | 'etv'>('etv')
+function makeHref(q: string, page: number, limit: number) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  params.set("page", String(page));
+  params.set("limit", String(limit));
+  return `/players?${params.toString()}`;
+}
 
-  useEffect(() => {
-    fetchPlayers()
-  }, [])
-
-  useEffect(() => {
-    filterAndSortPlayers()
-  }, [players, searchTerm, teamFilter, positionFilter, sortBy])
-
-  async function fetchPlayers() {
-    // Fetch all players
-    const { data: playersData, error } = await supabase
-      .from('players')
-      .select('*')
-      .order('name')
-
-    if (!playersData) {
-      setLoading(false)
-      return
-    }
-
-    // Fetch ALL player seasons - Use batching to avoid 1000 row limit
-    const playerIds = playersData.map(p => p.id)
-    
-    let allSeasons: SeasonStats[] = []
-    const batchSize = 1000
-    let offset = 0
-    let hasMore = true
-
-    while (hasMore) {
-      const { data: seasonBatch } = await supabase
-        .from('player_seasons')
-        .select('*')
-        .in('player_id', playerIds)
-        .order('season', { ascending: false })
-        .range(offset, offset + batchSize - 1)
-      
-      if (seasonBatch && seasonBatch.length > 0) {
-        allSeasons = [...allSeasons, ...seasonBatch]
-        offset += batchSize
-        hasMore = seasonBatch.length === batchSize
-      } else {
-        hasMore = false
-      }
-    }
-
-    // Group seasons by player_id
-    const seasonsByPlayer = new Map<number, SeasonStats[]>()
-    allSeasons.forEach(season => {
-      if (!seasonsByPlayer.has(season.player_id)) {
-        seasonsByPlayer.set(season.player_id, [])
-      }
-      seasonsByPlayer.get(season.player_id)!.push(season)
-    })
-
-    // Calculate ETV with historical context for all players
-    const playersWithETV = playersData.map(player => {
-      const playerSeasons = seasonsByPlayer.get(player.id) || []
-      
-      // Calculate historical metrics if we have season data
-      const historicalData = playerSeasons.length > 0 
-        ? calculateHistoricalMetrics(playerSeasons)
-        : undefined
-
-      const valuation = calculateTradeValue(
-        player,
-        player.tps || player.war || 2.0,
-        historicalData
-      )
-
-      return {
-        ...player,
-        etv: valuation.estimatedDollarValue
-      }
-    })
-
-    setPlayers(playersWithETV)
-    setLoading(false)
+function getPageItems(current: number, total: number) {
+  // Behavior:
+  // - If total <= 12 => show all
+  // - If near start => show 1..10 ... last
+  // - If near end => show 1 ... last-9..last
+  // - Else => show 1 ... (c-2..c+2) ... last
+  const items: (number | "...")[] = [];
+  if (total <= 12) {
+    for (let i = 1; i <= total; i++) items.push(i);
+    return items;
   }
 
-  function filterAndSortPlayers() {
-    let filtered = [...players]
+  const c = Math.max(1, Math.min(total, current));
 
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(p => 
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
+  const pushRange = (a: number, b: number) => {
+    for (let i = a; i <= b; i++) items.push(i);
+  };
 
-    // Team filter
-    if (teamFilter !== 'all') {
-      filtered = filtered.filter(p => p.team === teamFilter)
-    }
-
-    // Position filter
-    if (positionFilter !== 'all') {
-      filtered = filtered.filter(p => p.position === positionFilter)
-    }
-
-    // Sort
-    if (sortBy === 'name') {
-      filtered.sort((a, b) => a.name.localeCompare(b.name))
-    } else if (sortBy === 'team') {
-      filtered.sort((a, b) => a.team.localeCompare(b.team))
-    } else if (sortBy === 'etv') {
-      // Already calculated, just sort by it
-      filtered.sort((a, b) => b.etv - a.etv)
-    }
-
-    setFilteredPlayers(filtered)
+  // near start
+  if (c <= 6) {
+    pushRange(1, 10);
+    items.push("...");
+    items.push(total);
+    return items;
   }
 
-  const teams = Array.from(new Set(players.map(p => p.team))).sort()
-  const positions = Array.from(new Set(players.map(p => p.position))).sort()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl text-gray-600">Loading players...</div>
-      </div>
-    )
+  // near end
+  if (c >= total - 5) {
+    items.push(1);
+    items.push("...");
+    pushRange(total - 9, total);
+    return items;
   }
+
+  // middle
+  items.push(1);
+  items.push("...");
+  pushRange(c - 2, c + 2);
+  items.push("...");
+  items.push(total);
+  return items;
+}
+
+function Pager({
+  q,
+  page,
+  totalPages,
+  limit,
+}: {
+  q: string;
+  page: number;
+  totalPages: number;
+  limit: number;
+}) {
+  const hasPrev = page > 1;
+  const hasNext = page < totalPages;
+  const items = getPageItems(page, totalPages);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
-      <nav className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="text-2xl font-bold text-blue-600">
-              MLB Valuations
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Prev/Next */}
+      <div className="flex items-center gap-2">
+        <Link
+          aria-disabled={!hasPrev}
+          className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+            hasPrev
+              ? "bg-white border-slate-200 hover:bg-slate-50"
+              : "pointer-events-none bg-white border-slate-200 opacity-50 text-slate-400"
+          }`}
+          href={makeHref(q, page - 1, limit)}
+        >
+          Prev
+        </Link>
+
+        <Link
+          aria-disabled={!hasNext}
+          className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+            hasNext
+              ? "bg-white border-slate-200 hover:bg-slate-50"
+              : "pointer-events-none bg-white border-slate-200 opacity-50 text-slate-400"
+          }`}
+          href={makeHref(q, page + 1, limit)}
+        >
+          Next
+        </Link>
+      </div>
+
+      {/* Page numbers */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {items.map((it, idx) => {
+          if (it === "...") {
+            return (
+              <span key={`dots-${idx}`} className="px-2 text-slate-400">
+                …
+              </span>
+            );
+          }
+
+          const isActive = it === page;
+          return (
+            <Link
+              key={it}
+              href={makeHref(q, it, limit)}
+              className={`min-w-9 text-center rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                isActive
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "bg-white border-slate-200 text-slate-900 hover:bg-slate-50"
+              }`}
+            >
+              {it}
             </Link>
-            <div className="flex gap-6">
-              <Link href="/players" className="text-gray-700 hover:text-blue-600 font-medium">
-                Browse Players
-              </Link>
-              <Link href="/methodology" className="text-gray-700 hover:text-blue-600 font-medium">
-                How It Works
-              </Link>
-            </div>
-          </div>
+          );
+        })}
+      </div>
+
+      {/* Jump to page */}
+      <form action="/players" method="get" className="flex items-center gap-2">
+        {q ? <input type="hidden" name="q" value={q} /> : null}
+        <input type="hidden" name="limit" value={limit} />
+        <label className="text-sm text-slate-600">Jump</label>
+        <input
+          name="page"
+          type="number"
+          min={1}
+          max={totalPages}
+          defaultValue={page}
+          className="w-20 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-slate-300"
+        />
+        <button
+          type="submit"
+          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 shadow-sm"
+        >
+          Go
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default async function PlayersPage({
+  searchParams,
+}: {
+  // ✅ Next.js 16: searchParams is a Promise
+  searchParams?: Promise<{
+    // legacy UI params (kept)
+    q?: string;
+    limit?: string;
+
+    // canonical params (supported for forward compatibility)
+    name?: string;
+    pageSize?: string;
+
+    page?: string;
+  }>;
+}) {
+  const sp = (await searchParams) ?? {};
+
+  // UI still uses q/limit, but we also accept name/pageSize if present
+  const q = (sp.q ?? "").trim();
+  const name = (sp.name ?? sp.q ?? "").trim();
+
+  const page = toInt(sp.page, 1);
+
+  const limit = toInt(sp.limit, 25);
+  const pageSize = toInt(sp.pageSize ?? sp.limit, 25);
+
+  const baseUrl = await getBaseUrl();
+
+  // ✅ API expects name/page/pageSize
+  const apiParams = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (name) apiParams.set("name", name);
+
+  const url = `${baseUrl}/api/players?${apiParams.toString()}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok)
+    throw new Error(`Failed to load players: ${res.status} ${res.statusText}`);
+
+  const data = (await res.json()) as PlayersApiResponse;
+
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const effectivePageSize = Number.isFinite(data?.pageSize) ? data.pageSize : pageSize;
+  const total = Number.isFinite(data?.total) ? data.total : 0;
+  const totalPages =
+    effectivePageSize > 0 ? Math.max(1, Math.ceil(total / effectivePageSize)) : 1;
+
+  return (
+    <div className="text-base">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Players</h1>
+          <p className="text-slate-600">
+            Search and open any player to see their current value.
+          </p>
         </div>
-      </nav>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-7xl mx-auto">
-          
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              MLB Player Valuations
-            </h1>
-            <p className="text-gray-600">
-              Browse all {players.length} players and their estimated trade values
-            </p>
-          </div>
+        <form action="/players" method="get" className="flex w-full gap-2 sm:w-auto">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search player name…"
+            className="w-full sm:w-96 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-slate-300"
+          />
+          <input type="hidden" name="limit" value={limit} />
+          <button
+            type="submit"
+            className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 shadow-sm"
+          >
+            Search
+          </button>
+        </form>
+      </div>
 
-          {/* Filters */}
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              
-              {/* Search */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Search Players
-                </label>
-                <input
-                  type="text"
-                  placeholder="Search by name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+      {/* TOP pager */}
+      <div className="mb-4">
+        <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
+      </div>
 
-              {/* Team Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Team
-                </label>
-                <select
-                  value={teamFilter}
-                  onChange={(e) => setTeamFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Teams</option>
-                  {teams.map(team => (
-                    <option key={team} value={team}>{team}</option>
-                  ))}
-                </select>
-              </div>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid grid-cols-12 gap-3 border-b border-slate-200 px-6 py-4 text-xs font-semibold text-slate-500">
+          <div className="col-span-6 sm:col-span-5">Player</div>
+          <div className="col-span-3 sm:col-span-2">Team</div>
+          <div className="col-span-3 sm:col-span-2">Pos</div>
+          <div className="hidden sm:col-span-1 sm:block">Age</div>
+          <div className="hidden sm:col-span-2 sm:block text-right">Est. Value</div>
+        </div>
 
-              {/* Position Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Position
-                </label>
-                <select
-                  value={positionFilter}
-                  onChange={(e) => setPositionFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Positions</option>
-                  {positions.map(pos => (
-                    <option key={pos} value={pos}>{pos}</option>
-                  ))}
-                </select>
-              </div>
+        <div className="divide-y divide-slate-200">
+          {rows.map((p) => {
+            const est = p.valuation?.estimatedDollarValue ?? null;
+            const warUsed = p.valuation?.breakdown?.warUsed ?? null;
+            const tpsMod = p.valuation?.breakdown?.tpsModifier ?? null;
 
-              {/* Sort */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Sort By
-                </label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="etv">Trade Value (High to Low)</option>
-                  <option value="name">Name (A-Z)</option>
-                  <option value="team">Team (A-Z)</option>
-                </select>
-              </div>
-            </div>
+            return (
+              <div key={p.id} className="grid grid-cols-12 items-center gap-3 px-6 py-4">
+                <div className="col-span-6 sm:col-span-5">
+                  <Link
+                    href={`/players/${p.id}`}
+                    className="flex items-center gap-4 rounded-lg p-2 -m-2 hover:bg-slate-50 transition"
+                    prefetch={false}
+                  >
+                    <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.image_url ?? "/placeholder.png"}
+                        alt={p.name}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
 
-            <div className="mt-4 text-sm text-gray-600">
-              Showing {filteredPlayers.length} of {players.length} players
-            </div>
-          </div>
-
-          {/* Players Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPlayers.map(player => {
-              // Use pre-calculated ETV from state
-              const etv = player.etv
-              const tradeValueIndex = Math.min(Math.round((etv / 60_000_000) * 100), 100)
-              
-              return (
-                <Link 
-                  key={player.id} 
-                  href={`/player/${player.id}`}
-                  className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6"
-                >
-                  <div className="flex items-start gap-4">
-                    <img
-                      src={player.image_url}
-                      alt={player.name}
-                      className="w-20 h-20 rounded-lg object-cover"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-lg text-gray-900 truncate">
-                        {player.name}
-                      </h3>
-                      <div className="text-sm text-gray-600 mb-2">
-                        {player.position} • {player.team}
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-green-600">
-                          {formatDollarValue(etv)}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          TVI: {tradeValueIndex}/100
-                          {player.tps && ` • TPS: ${player.tps.toFixed(1)}`}
-                        </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-base font-semibold">{p.name}</div>
+                      <div className="truncate text-xs text-slate-500">
+                        WAR used: {warUsed ?? "—"} · TPS mod: {tpsMod ?? "—"}
                       </div>
                     </div>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
+                  </Link>
+                </div>
 
-          {filteredPlayers.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-gray-500 text-lg">
-                No players found matching your filters
+                <div className="col-span-3 sm:col-span-2 truncate text-sm">
+                  {p.team ?? "—"}
+                </div>
+                <div className="col-span-3 sm:col-span-2 truncate text-sm">
+                  {p.position ?? "—"}
+                </div>
+                <div className="hidden sm:block sm:col-span-1 text-sm">{p.age ?? "—"}</div>
+                <div className="hidden sm:block sm:col-span-2 text-right text-sm font-semibold">
+                  {formatMoney(est)}
+                </div>
               </div>
+            );
+          })}
+
+          {rows.length === 0 && (
+            <div className="px-6 py-14 text-center text-sm text-slate-500">
+              No players found.
             </div>
           )}
         </div>
       </div>
+
+      {/* BOTTOM pager */}
+      <div className="mt-6">
+        <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
+      </div>
     </div>
-  )
+  );
 }
