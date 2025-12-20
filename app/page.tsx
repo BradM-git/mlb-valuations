@@ -60,7 +60,8 @@ type BrowseRow = {
   position: string | null;
   age: number | null;
   image_url: string | null;
-  outlook: "Up" | "Steady" | "Down";
+  war: number | null;
+  season: number | null;
 };
 
 type PlannedFeature = {
