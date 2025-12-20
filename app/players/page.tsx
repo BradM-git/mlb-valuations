@@ -185,7 +185,6 @@ export default async function PlayersPage({
 
   const offset = (page - 1) * limit;
 
-  // ✅ Query players directly (do NOT fetch your own API from SSR)
   let query = supabase
     .from("players")
     .select("id,name,team,position,age,tps,games_played,image_url", { count: "exact" });
@@ -206,6 +205,75 @@ export default async function PlayersPage({
 
   if (safePlayers.length === 0) {
     return (
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10">
+        <div className="text-base">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Players</h1>
+              <p className="text-slate-600">Search and open any player to see their current value.</p>
+            </div>
+
+            <form action="/players" method="get" className="flex w-full gap-2 sm:w-auto">
+              <input
+                name="q"
+                defaultValue={q}
+                placeholder="Search player name…"
+                className="w-full sm:w-96 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              <input type="hidden" name="limit" value={limit} />
+              <button
+                type="submit"
+                className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 shadow-sm"
+              >
+                Search
+              </button>
+            </form>
+          </div>
+
+          <div className="mb-4">
+            <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="px-6 py-14 text-center text-sm text-slate-500">No players found.</div>
+          </div>
+
+          <div className="mt-6">
+            <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const playerIds = safePlayers.map((p) => p.id);
+
+  const { data: seasons, error: seasonsError } = await supabase
+    .from("player_seasons")
+    .select("player_id,season,tps,games_played,war")
+    .in("player_id", playerIds);
+
+  if (seasonsError) {
+    throw new Error(`Failed to load player seasons: ${seasonsError.message}`);
+  }
+
+  const seasonsByPlayer = new Map<number, any[]>();
+  for (const s of seasons ?? []) {
+    const pid = (s as any).player_id as number;
+    if (!seasonsByPlayer.has(pid)) seasonsByPlayer.set(pid, []);
+    seasonsByPlayer.get(pid)!.push(s);
+  }
+
+  const rows: PlayerRow[] = safePlayers.map((player) => {
+    const playerSeasons = seasonsByPlayer.get(player.id) ?? [];
+    const { valuation } = getPlayerValuation(player as any, playerSeasons);
+    return { ...player, valuation };
+  });
+
+  rows.sort((a, b) => (b.valuation?.estimatedDollarValue ?? 0) - (a.valuation?.estimatedDollarValue ?? 0));
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10">
       <div className="text-base">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
           <div>
@@ -235,129 +303,62 @@ export default async function PlayersPage({
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-6 py-14 text-center text-sm text-slate-500">No players found.</div>
+          <div className="grid grid-cols-12 gap-3 border-b border-slate-200 px-6 py-4 text-xs font-semibold text-slate-500">
+            <div className="col-span-6 sm:col-span-5">Player</div>
+            <div className="col-span-3 sm:col-span-2">Team</div>
+            <div className="col-span-3 sm:col-span-2">Pos</div>
+            <div className="hidden sm:col-span-1 sm:block">Age</div>
+            <div className="hidden sm:col-span-2 sm:block text-right">Est. Value</div>
+          </div>
+
+          <div className="divide-y divide-slate-200">
+            {rows.map((p) => {
+              const est = p.valuation?.estimatedDollarValue ?? null;
+              const warUsed = p.valuation?.breakdown?.warUsed ?? null;
+              const tpsMod = p.valuation?.breakdown?.tpsModifier ?? null;
+
+              return (
+                <div key={p.id} className="grid grid-cols-12 items-center gap-3 px-6 py-4">
+                  <div className="col-span-6 sm:col-span-5">
+                    <Link
+                      href={`/players/${p.id}`}
+                      className="flex items-center gap-4 rounded-lg p-2 -m-2 hover:bg-slate-50 transition"
+                      prefetch={false}
+                    >
+                      <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={p.image_url ?? "/placeholder.png"}
+                          alt={p.name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-semibold">{p.name}</div>
+                        <div className="truncate text-xs text-slate-500">
+                          WAR used: {warUsed ?? "—"} · TPS mod: {tpsMod ?? "—"}
+                        </div>
+                      </div>
+                    </Link>
+                  </div>
+
+                  <div className="col-span-3 sm:col-span-2 truncate text-sm">{p.team ?? "—"}</div>
+                  <div className="col-span-3 sm:col-span-2 truncate text-sm">{p.position ?? "—"}</div>
+                  <div className="hidden sm:block sm:col-span-1 text-sm">{p.age ?? "—"}</div>
+                  <div className="hidden sm:block sm:col-span-2 text-right text-sm font-semibold">
+                    {formatMoney(est)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-6">
           <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
         </div>
-      </div>
-    );
-  }
-
-  // ✅ Load seasons in one query for valuation (WAR-first)
-  const playerIds = safePlayers.map((p) => p.id);
-
-  const { data: seasons, error: seasonsError } = await supabase
-    .from("player_seasons")
-    .select("player_id,season,tps,games_played,war")
-    .in("player_id", playerIds);
-
-  if (seasonsError) {
-    throw new Error(`Failed to load player seasons: ${seasonsError.message}`);
-  }
-
-  const seasonsByPlayer = new Map<number, any[]>();
-  for (const s of seasons ?? []) {
-    const pid = (s as any).player_id as number;
-    if (!seasonsByPlayer.has(pid)) seasonsByPlayer.set(pid, []);
-    seasonsByPlayer.get(pid)!.push(s);
-  }
-
-  const rows: PlayerRow[] = safePlayers.map((player) => {
-    const playerSeasons = seasonsByPlayer.get(player.id) ?? [];
-    const { valuation } = getPlayerValuation(player as any, playerSeasons);
-    return { ...player, valuation };
-  });
-
-  // Keep your sort by valuation
-  rows.sort((a, b) => (b.valuation?.estimatedDollarValue ?? 0) - (a.valuation?.estimatedDollarValue ?? 0));
-
-  return (
-    <div className="text-base">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Players</h1>
-          <p className="text-slate-600">Search and open any player to see their current value.</p>
-        </div>
-
-        <form action="/players" method="get" className="flex w-full gap-2 sm:w-auto">
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search player name…"
-            className="w-full sm:w-96 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <input type="hidden" name="limit" value={limit} />
-          <button
-            type="submit"
-            className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 shadow-sm"
-          >
-            Search
-          </button>
-        </form>
-      </div>
-
-      <div className="mb-4">
-        <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-12 gap-3 border-b border-slate-200 px-6 py-4 text-xs font-semibold text-slate-500">
-          <div className="col-span-6 sm:col-span-5">Player</div>
-          <div className="col-span-3 sm:col-span-2">Team</div>
-          <div className="col-span-3 sm:col-span-2">Pos</div>
-          <div className="hidden sm:col-span-1 sm:block">Age</div>
-          <div className="hidden sm:col-span-2 sm:block text-right">Est. Value</div>
-        </div>
-
-        <div className="divide-y divide-slate-200">
-          {rows.map((p) => {
-            const est = p.valuation?.estimatedDollarValue ?? null;
-            const warUsed = p.valuation?.breakdown?.warUsed ?? null;
-            const tpsMod = p.valuation?.breakdown?.tpsModifier ?? null;
-
-            return (
-              <div key={p.id} className="grid grid-cols-12 items-center gap-3 px-6 py-4">
-                <div className="col-span-6 sm:col-span-5">
-                  <Link
-                    href={`/players/${p.id}`}
-                    className="flex items-center gap-4 rounded-lg p-2 -m-2 hover:bg-slate-50 transition"
-                    prefetch={false}
-                  >
-                    <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.image_url ?? "/placeholder.png"}
-                        alt={p.name}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="truncate text-base font-semibold">{p.name}</div>
-                      <div className="truncate text-xs text-slate-500">
-                        WAR used: {warUsed ?? "—"} · TPS mod: {tpsMod ?? "—"}
-                      </div>
-                    </div>
-                  </Link>
-                </div>
-
-                <div className="col-span-3 sm:col-span-2 truncate text-sm">{p.team ?? "—"}</div>
-                <div className="col-span-3 sm:col-span-2 truncate text-sm">{p.position ?? "—"}</div>
-                <div className="hidden sm:block sm:col-span-1 text-sm">{p.age ?? "—"}</div>
-                <div className="hidden sm:block sm:col-span-2 text-right text-sm font-semibold">
-                  {formatMoney(est)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <Pager q={q} page={page} totalPages={totalPages} limit={limit} />
       </div>
     </div>
   );
