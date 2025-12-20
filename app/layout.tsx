@@ -19,11 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               MLB Valuations
             </Link>
             <nav className="flex items-center gap-6 text-sm font-medium text-slate-700">
-              <Link href="/#browse" className="hover:text-slate-900">
+              <Link href="/players" className="hover:text-slate-900">
                 Browse Players
-              </Link>
-              <Link href="/teams" className="hover:text-slate-900">
-                Teams
               </Link>
               <Link href="/methodology" className="hover:text-slate-900">
                 How It Works
