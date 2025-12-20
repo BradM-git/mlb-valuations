@@ -16,9 +16,14 @@ type PlayerRow = {
   image_url: string | null;
   valuation?: {
     estimatedDollarValue?: number | null;
-    outlook?: "up" | "steady" | "down";
-    confidence?: "high" | "medium" | "low";
   };
+};
+
+type SeasonRow = {
+  player_id: number;
+  season: number;
+  war: number | null;
+  games_played: number | null;
 };
 
 function toInt(value: string | undefined, fallback: number) {
@@ -47,6 +52,47 @@ function makeHref(q: string, page: number, limit: number) {
   params.set("page", String(page));
   params.set("limit", String(limit));
   return `/players?${params.toString()}`;
+}
+
+// Outlook v1 (defensible + simple): compare WAR current vs prior, with games played as stability proxy
+function getOutlookFromSeasons(
+  seasons: SeasonRow[],
+  fallback: "steady" = "steady"
+): "up" | "steady" | "down" {
+  if (!seasons || seasons.length === 0) return fallback;
+
+  const bySeason = new Map<number, SeasonRow>();
+  for (const s of seasons) bySeason.set(s.season, s);
+
+  const years = Array.from(bySeason.keys()).sort((a, b) => a - b);
+  if (years.length < 2) return fallback;
+
+  const curYear = years[years.length - 1];
+  const prevYear = years[years.length - 2];
+
+  const cur = bySeason.get(curYear);
+  const prev = bySeason.get(prevYear);
+
+  const curWar = cur?.war ?? null;
+  const prevWar = prev?.war ?? null;
+  const curG = cur?.games_played ?? null;
+  const prevG = prev?.games_played ?? null;
+
+  if (curWar == null || prevWar == null) return fallback;
+
+  // Stability proxy: if player barely played either year, avoid strong directional call
+  const minGames = 50;
+  const stable =
+    (curG == null || curG >= minGames) && (prevG == null || prevG >= minGames);
+
+  const delta = curWar - prevWar;
+
+  // Small changes should be "steady"
+  const threshold = stable ? 0.5 : 1.0;
+
+  if (delta > threshold) return "up";
+  if (delta < -threshold) return "down";
+  return "steady";
 }
 
 export default async function PlayersPage({
@@ -81,21 +127,22 @@ export default async function PlayersPage({
 
   const playerIds = safePlayers.map((p) => p.id);
 
-  const { data: seasons } = await supabase
+  const { data: seasons, error: seasonsError } = await supabase
     .from("player_seasons")
     .select("player_id,season,war,games_played")
     .in("player_id", playerIds);
 
-  const seasonsByPlayer = new Map<number, any[]>();
-  for (const s of seasons ?? []) {
-    const pid = (s as any).player_id;
-    if (!seasonsByPlayer.has(pid)) seasonsByPlayer.set(pid, []);
-    seasonsByPlayer.get(pid)!.push(s);
+  if (seasonsError) throw new Error(seasonsError.message);
+
+  const seasonsByPlayer = new Map<number, SeasonRow[]>();
+  for (const s of (seasons ?? []) as SeasonRow[]) {
+    if (!seasonsByPlayer.has(s.player_id)) seasonsByPlayer.set(s.player_id, []);
+    seasonsByPlayer.get(s.player_id)!.push(s);
   }
 
   const rows = safePlayers.map((player) => {
     const playerSeasons = seasonsByPlayer.get(player.id) ?? [];
-    const { valuation } = getPlayerValuation(player as any, playerSeasons);
+    const { valuation } = getPlayerValuation(player as any, playerSeasons as any);
     return { ...player, valuation };
   });
 
@@ -114,18 +161,11 @@ export default async function PlayersPage({
             Browse and compare current player standings.
           </p>
 
-          {/* NEW: secondary links */}
           <div className="mt-2 flex gap-4 text-sm font-semibold">
-            <Link
-              href="/players/risers"
-              className="text-green-700 hover:underline"
-            >
+            <Link href="/players/risers" className="text-green-700 hover:underline">
               Biggest Risers
             </Link>
-            <Link
-              href="/players/fallers"
-              className="text-red-700 hover:underline"
-            >
+            <Link href="/players/fallers" className="text-red-700 hover:underline">
               Biggest Fallers
             </Link>
           </div>
@@ -159,18 +199,19 @@ export default async function PlayersPage({
 
         <div className="divide-y divide-slate-200">
           {rows.map((p) => {
-            const o = outlookLabel(p.valuation?.outlook);
+            const playerSeasons = seasonsByPlayer.get(p.id) ?? [];
+            const outlook = getOutlookFromSeasons(playerSeasons, "steady");
+            const o = outlookLabel(outlook);
+
             return (
-              <div
-                key={p.id}
-                className="grid grid-cols-12 items-center gap-3 px-6 py-4"
-              >
+              <div key={p.id} className="grid grid-cols-12 items-center gap-3 px-6 py-4">
                 <div className="col-span-6 sm:col-span-4">
                   <Link
                     href={`/players/${p.id}`}
                     className="flex items-center gap-4 rounded-lg p-2 -m-2 hover:bg-slate-50 transition"
                   >
                     <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={p.image_url ?? "/placeholder.png"}
                         alt={p.name}
@@ -178,19 +219,13 @@ export default async function PlayersPage({
                       />
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-base font-semibold">
-                        {p.name}
-                      </div>
+                      <div className="truncate text-base font-semibold">{p.name}</div>
                     </div>
                   </Link>
                 </div>
 
-                <div className="hidden sm:block sm:col-span-2 text-sm">
-                  {p.team ?? "—"}
-                </div>
-                <div className="hidden sm:block sm:col-span-2 text-sm">
-                  {p.position ?? "—"}
-                </div>
+                <div className="hidden sm:block sm:col-span-2 text-sm">{p.team ?? "—"}</div>
+                <div className="hidden sm:block sm:col-span-2 text-sm">{p.position ?? "—"}</div>
 
                 <div className={`hidden sm:block sm:col-span-2 text-sm font-semibold ${o.cls}`}>
                   {o.icon} {o.label}
