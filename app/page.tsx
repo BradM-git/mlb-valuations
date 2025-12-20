@@ -473,7 +473,12 @@ async function getHomepageBrowsePlayers(opts: {
     const latest = s.at(-1) ?? null;
     const prior = s.length >= 2 ? s.at(-2)! : null;
     const delta = latest?.war != null && prior?.war != null ? latest.war - prior.war : null;
-    return { ...p, outlook: outlookFromDelta(delta) };
+    return {
+  ...p,
+  outlook: outlookFromDelta(delta),
+  war: latest?.war ?? null,
+  season: latest?.season ?? null,
+};
   });
 
   return { rows, total: count ?? 0 };
