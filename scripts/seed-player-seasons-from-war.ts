@@ -1,229 +1,334 @@
 // scripts/seed-player-seasons-from-war.ts
-import dotenv from 'dotenv'
-dotenv.config({ path: '.env.local' })
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
 
-import fs from 'node:fs'
-import path from 'node:path'
-import { execSync } from 'node:child_process'
-import { createClient } from '@supabase/supabase-js'
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
+import { createClient } from "@supabase/supabase-js";
 
-console.log('START seed-player-seasons-from-war')
+console.log("START seed-player-seasons-from-war");
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+// NOTE: service role => no session persistence
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false },
+});
+
+// CLI flags
+const FORCE = process.argv.includes("--force");
 
 // paths
-const ZIP_PATH = path.join(process.cwd(), 'data', 'bbref', 'war_archive.zip')
-const EXTRACT_DIR = path.join(process.cwd(), 'data', 'bbref', 'war_archive')
+const ZIP_PATH = path.join(process.cwd(), "data", "bbref", "war_archive.zip");
+const EXTRACT_DIR = path.join(process.cwd(), "data", "bbref", "war_archive");
 
 // players table MLBAM column name
-const MLBAM_COL = 'mlb_id'
+const MLBAM_COL = "mlb_id";
 
 function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let cell = ''
-  let inQuotes = false
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
 
   for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    const next = text[i + 1]
+    const ch = text[i];
+    const next = text[i + 1];
 
     if (ch === '"') {
       if (inQuotes && next === '"') {
-        cell += '"'
-        i++
+        cell += '"';
+        i++;
       } else {
-        inQuotes = !inQuotes
+        inQuotes = !inQuotes;
       }
-      continue
+      continue;
     }
-    if (ch === ',' && !inQuotes) {
-      row.push(cell)
-      cell = ''
-      continue
+    if (ch === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
     }
-    if ((ch === '\n' || ch === '\r') && !inQuotes) {
-      if (ch === '\r' && next === '\n') i++
-      row.push(cell)
-      if (row.length > 1 || row[0] !== '') rows.push(row)
-      row = []
-      cell = ''
-      continue
+    if ((ch === "\n" || ch === "\r") && !inQuotes) {
+      if (ch === "\r" && next === "\n") i++;
+      row.push(cell);
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+      cell = "";
+      continue;
     }
-    cell += ch
+    cell += ch;
   }
 
   if (cell.length || row.length) {
-    row.push(cell)
-    rows.push(row)
+    row.push(cell);
+    rows.push(row);
   }
 
-  return rows
+  return rows;
 }
 
 function toNum(v?: string): number | null {
-  const s = (v ?? '').trim()
-  if (!s || s === 'NULL') return null
-  const n = Number(s)
-  return Number.isFinite(n) ? n : null
+  const s = (v ?? "").trim();
+  if (!s || s === "NULL") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
 }
 
 async function ensureExtracted() {
   if (!fs.existsSync(ZIP_PATH)) {
-    throw new Error(`Missing ${ZIP_PATH}. Put war_archive.zip in data/bbref/`)
+    throw new Error(`Missing ${ZIP_PATH}. Put war_archive.zip in data/bbref/`);
   }
-  if (!fs.existsSync(EXTRACT_DIR)) fs.mkdirSync(EXTRACT_DIR, { recursive: true })
+  if (!fs.existsSync(EXTRACT_DIR)) fs.mkdirSync(EXTRACT_DIR, { recursive: true });
 
-  const batFile = path.join(EXTRACT_DIR, 'war_daily_bat.txt')
-  const pitFile = path.join(EXTRACT_DIR, 'war_daily_pitch.txt')
-  if (fs.existsSync(batFile) && fs.existsSync(pitFile)) return
+  const batFile = path.join(EXTRACT_DIR, "war_daily_bat.txt");
+  const pitFile = path.join(EXTRACT_DIR, "war_daily_pitch.txt");
+  if (fs.existsSync(batFile) && fs.existsSync(pitFile)) return;
 
-  execSync(`unzip -q -o "${ZIP_PATH}" -d "${EXTRACT_DIR}"`)
+  execSync(`unzip -q -o "${ZIP_PATH}" -d "${EXTRACT_DIR}"`);
+}
+
+type WarRow = {
+  player_id: number;
+  season: number;
+  war: number;
+  games_played: number | null;
+};
+
+type ExistingSeasonRow = {
+  player_id: number;
+  season: number;
+  war: number | null;
+  war_source: string | null;
+};
+
+function keyOf(player_id: number, season: number) {
+  return `${player_id}:${season}`;
+}
+
+async function fetchExistingForChunk(keys: { player_id: number; season: number }[]) {
+  // Supabase doesn't support (player_id,season) IN (...) directly,
+  // so we use OR-of-ANDs in a single .or() filter.
+  // Keep chunk sizes moderate to avoid huge filter strings.
+  if (keys.length === 0) return new Map<string, ExistingSeasonRow>();
+
+  const orFilter = keys
+    .map((k) => `and(player_id.eq.${k.player_id},season.eq.${k.season})`)
+    .join(",");
+
+  const { data, error } = await supabase
+    .from("player_seasons")
+    .select("player_id,season,war,war_source")
+    .or(orFilter);
+
+  if (error) throw error;
+
+  const map = new Map<string, ExistingSeasonRow>();
+  for (const r of (data ?? []) as ExistingSeasonRow[]) {
+    map.set(keyOf(r.player_id, r.season), r);
+  }
+  return map;
+}
+
+function shouldWrite(existing: ExistingSeasonRow | undefined) {
+  if (FORCE) return true;
+
+  // Default, defensible behavior:
+  // - If WAR is missing, fill it.
+  // - If it was previously written by this same bbref pipeline, refresh it.
+  // - If another source already populated WAR, leave it alone.
+  if (!existing) return true;
+  if (existing.war == null) return true;
+
+  const src = (existing.war_source ?? "").toLowerCase();
+  if (!src) return true;
+  if (src === "bbref") return true;
+
+  return false;
 }
 
 async function main() {
-  await ensureExtracted()
+  await ensureExtracted();
 
-  const batFile = path.join(EXTRACT_DIR, 'war_daily_bat.txt')
-  const pitFile = path.join(EXTRACT_DIR, 'war_daily_pitch.txt')
+  const batFile = path.join(EXTRACT_DIR, "war_daily_bat.txt");
+  const pitFile = path.join(EXTRACT_DIR, "war_daily_pitch.txt");
 
-  console.log('Using files:', { batFile, pitFile })
+  console.log("Using files:", { batFile, pitFile });
+  console.log(`Mode: ${FORCE ? "FORCE overwrite" : "SAFE (won't overwrite other sources)"}`);
 
   // ✅ Load ALL players (paged) to avoid Supabase row cap
-  console.log('Loading players mappings (paged)...')
+  console.log("Loading players mappings (paged)...");
 
-  const mlbamToPlayerId = new Map<number, number>()
-  const bbrefToPlayerId = new Map<string, number>()
+  const mlbamToPlayerId = new Map<number, number>();
+  const bbrefToPlayerId = new Map<string, number>();
 
-  const PAGE = 1000
-  let offset = 0
+  const PAGE = 1000;
+  let offset = 0;
 
   while (true) {
     const { data: batch, error } = await supabase
-      .from('players')
+      .from("players")
       .select(`id, ${MLBAM_COL}, bbref_id`)
-      .order('id', { ascending: true })
-      .range(offset, offset + PAGE - 1)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE - 1);
 
-    if (error) throw error
-    if (!batch || batch.length === 0) break
+    if (error) throw error;
+    if (!batch || batch.length === 0) break;
 
     for (const p of batch as any[]) {
-      const mid = Math.trunc(Number(p[MLBAM_COL]))
-      if (Number.isFinite(mid) && mid > 0) mlbamToPlayerId.set(mid, p.id)
-      if (p.bbref_id) bbrefToPlayerId.set(String(p.bbref_id).trim(), p.id)
+      const mid = Math.trunc(Number(p[MLBAM_COL]));
+      if (Number.isFinite(mid) && mid > 0) mlbamToPlayerId.set(mid, p.id);
+      if (p.bbref_id) bbrefToPlayerId.set(String(p.bbref_id).trim(), p.id);
     }
 
-    offset += PAGE
-    if (batch.length < PAGE) break
+    offset += PAGE;
+    if (batch.length < PAGE) break;
   }
 
-  console.log(`Players mapped by ${MLBAM_COL}:`, mlbamToPlayerId.size)
-  console.log('Players mapped by bbref_id:', bbrefToPlayerId.size)
+  console.log(`Players mapped by ${MLBAM_COL}:`, mlbamToPlayerId.size);
+  console.log("Players mapped by bbref_id:", bbrefToPlayerId.size);
 
-  type Row = { player_id: number; season: number; war: number; games_played: number | null }
+  function readWarFile(filePath: string): WarRow[] {
+    const rows = parseCsv(fs.readFileSync(filePath, "utf8"));
+    const header = rows[0].map((h) => h.trim());
 
-  function readWarFile(filePath: string): Row[] {
-    const rows = parseCsv(fs.readFileSync(filePath, 'utf8'))
-    const header = rows[0].map(h => h.trim())
-
-    const mlbamIdx = header.indexOf('mlb_ID')
-    const bbrefIdx = header.indexOf('player_ID')
-    const yearIdx = header.indexOf('year_ID')
-    const warIdx = header.indexOf('WAR')
-    const gIdx = header.indexOf('G')
+    const mlbamIdx = header.indexOf("mlb_ID");
+    const bbrefIdx = header.indexOf("player_ID");
+    const yearIdx = header.indexOf("year_ID");
+    const warIdx = header.indexOf("WAR");
+    const gIdx = header.indexOf("G");
 
     if (yearIdx === -1 || warIdx === -1) {
-      throw new Error(`Missing required columns in ${path.basename(filePath)}`)
+      throw new Error(`Missing required columns in ${path.basename(filePath)}`);
     }
     if (mlbamIdx === -1 && bbrefIdx === -1) {
-      throw new Error(`Need mlb_ID or player_ID in ${path.basename(filePath)}`)
+      throw new Error(`Need mlb_ID or player_ID in ${path.basename(filePath)}`);
     }
 
-    const out: Row[] = []
+    const out: WarRow[] = [];
 
     for (let i = 1; i < rows.length; i++) {
-      const r = rows[i]
-      const year = toNum(r[yearIdx])
-      const war = toNum(r[warIdx])
-      const g = gIdx === -1 ? null : toNum(r[gIdx])
+      const r = rows[i];
+      const year = toNum(r[yearIdx]);
+      const war = toNum(r[warIdx]);
+      const g = gIdx === -1 ? null : toNum(r[gIdx]);
 
-      if (year == null || war == null) continue
+      if (year == null || war == null) continue;
 
-      let pid: number | undefined
+      let pid: number | undefined;
 
       // Prefer MLBAM match
       if (mlbamIdx !== -1) {
-        const mlbam = toNum(r[mlbamIdx])
-        if (mlbam != null) pid = mlbamToPlayerId.get(Math.trunc(mlbam))
+        const mlbam = toNum(r[mlbamIdx]);
+        if (mlbam != null) pid = mlbamToPlayerId.get(Math.trunc(mlbam));
       }
 
       // Fallback: BBRef id match (optional)
       if (!pid && bbrefIdx !== -1) {
-        const bbref = (r[bbrefIdx] ?? '').trim()
-        if (bbref) pid = bbrefToPlayerId.get(bbref)
+        const bbref = (r[bbrefIdx] ?? "").trim();
+        if (bbref) pid = bbrefToPlayerId.get(bbref);
       }
 
-      if (!pid) continue
+      if (!pid) continue;
 
       out.push({
         player_id: pid,
         season: Math.trunc(year),
         war,
         games_played: g == null ? null : Math.trunc(g),
-      })
+      });
     }
 
-    return out
+    return out;
   }
 
-  console.log('Parsing WAR files...')
-  const bat = readWarFile(batFile)
-  const pit = readWarFile(pitFile)
+  console.log("Parsing WAR files...");
+  const bat = readWarFile(batFile);
+  const pit = readWarFile(pitFile);
 
   // Merge bat+pitch by player-season (sum WAR)
-  const merged = new Map<string, Row>()
-  for (const r of bat) merged.set(`${r.player_id}:${r.season}`, r)
+  const merged = new Map<string, WarRow>();
+  for (const r of bat) merged.set(keyOf(r.player_id, r.season), r);
   for (const r of pit) {
-    const k = `${r.player_id}:${r.season}`
-    const existing = merged.get(k)
-    if (!existing) merged.set(k, r)
-    else merged.set(k, { ...existing, war: existing.war + r.war })
+    const k = keyOf(r.player_id, r.season);
+    const existing = merged.get(k);
+    if (!existing) merged.set(k, r);
+    else merged.set(k, { ...existing, war: existing.war + r.war });
   }
 
-  const finalRows = Array.from(merged.values())
-  console.log('Upserting rows into player_seasons:', finalRows.length)
+  const finalRows = Array.from(merged.values());
+  console.log("WAR rows parsed (merged bat+pit):", finalRows.length);
 
-  const chunkSize = 500
+  // Upsert with safeguards
+  console.log("Upserting rows into player_seasons...");
+
+  const chunkSize = 300; // keep OR-filter strings safe
+  let attempted = 0;
+  let written = 0;
+  let skipped = 0;
+
   for (let i = 0; i < finalRows.length; i += chunkSize) {
-    const chunk = finalRows.slice(i, i + chunkSize).map(r => ({
+    const slice = finalRows.slice(i, i + chunkSize);
+
+    // Fetch existing rows for decisioning
+    const keyPairs = slice.map((r) => ({ player_id: r.player_id, season: r.season }));
+    const existingMap = await fetchExistingForChunk(keyPairs);
+
+    const toWrite = slice.filter((r) => {
+      const ex = existingMap.get(keyOf(r.player_id, r.season));
+      return shouldWrite(ex);
+    });
+
+    attempted += slice.length;
+    skipped += slice.length - toWrite.length;
+
+    if (toWrite.length === 0) {
+      console.log(
+        `Chunk ${Math.min(i + chunkSize, finalRows.length)} / ${finalRows.length}: nothing to write (all protected).`
+      );
+      continue;
+    }
+
+    const payload = toWrite.map((r) => ({
       player_id: r.player_id,
       season: r.season,
       war: r.war,
       games_played: r.games_played,
-      war_source: 'bbref',
+      war_source: "bbref",
       war_partial: false,
       war_updated_at: new Date().toISOString(),
-    }))
+    }));
 
     const { error } = await supabase
-      .from('player_seasons')
-      .upsert(chunk, { onConflict: 'player_id,season' })
+      .from("player_seasons")
+      .upsert(payload, { onConflict: "player_id,season" });
 
-    if (error) throw error
-    console.log(`Upserted ${Math.min(i + chunkSize, finalRows.length)} / ${finalRows.length}`)
+    if (error) throw error;
+
+    written += toWrite.length;
+
+    console.log(
+      `Processed ${Math.min(i + chunkSize, finalRows.length)} / ${finalRows.length} | wrote ${toWrite.length} | skipped ${
+        slice.length - toWrite.length
+      }`
+    );
   }
 
-  console.log('DONE seed-player-seasons-from-war')
+  console.log("DONE seed-player-seasons-from-war");
+  console.log({ attempted, written, skipped });
+  if (!FORCE) {
+    console.log(
+      "Note: ran in SAFE mode (did not overwrite non-null WAR from other sources). Use --force to override."
+    );
+  }
 }
 
-main().catch(e => {
-  console.error(e)
-  process.exit(1)
-})
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -1,252 +1,214 @@
 // app/players/risers/page.tsx
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { getPlayerValuation } from "@/lib/valuation";
 
 export const dynamic = "force-dynamic";
 
-type Player = {
-  id: number;
-  name: string;
-  team: string | null;
-  position: string | null;
-  age: number | null;
-  image_url: string | null;
-};
+type Row = { id: number; name: string };
 
-type SeasonRow = {
-  player_id: number;
-  season: number;
-  war: number | null;
-  games_played: number | null;
-  tps: number | null;
-};
+async function getRisers(): Promise<{
+  seasonA: number | null;
+  seasonB: number | null;
+  rows: Row[];
+}> {
+  const { data: seasons, error: seasonErr } = await supabase
+    .from("player_seasons")
+    .select("season")
+    .not("war", "is", null)
+    .order("season", { ascending: false })
+    .limit(2);
 
-function getMostRecentCompletedSeason(): number {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-11
-  // Nov/Dec => offseason => treat current year as most recent completed season
-  return month >= 10 ? year : year - 1;
-}
+  if (seasonErr) throw new Error(`seasons query failed: ${seasonErr.message}`);
 
-function formatMoney(n?: number | null) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
+  const seasonA = seasons?.[0]?.season != null ? Number(seasons[0].season) : null;
+  const seasonB = seasons?.[1]?.season != null ? Number(seasons[1].season) : null;
 
-function formatDelta(n?: number | null) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return sign + formatMoney(n);
-}
+  if (seasonA == null || seasonB == null) return { seasonA, seasonB, rows: [] };
 
-async function fetchCurrentSeasonPlayers(season: number): Promise<Player[]> {
-  // Pull full-league player list via player_seasons join (paged)
-  const PAGE = 1000;
-  let offset = 0;
+  const { data: ps, error: psErr } = await supabase
+    .from("player_seasons")
+    .select("player_id,season,war")
+    .in("season", [seasonA, seasonB])
+    .not("war", "is", null);
 
-  const out: Player[] = [];
-  const seen = new Set<number>();
+  if (psErr) throw new Error(`player_seasons query failed: ${psErr.message}`);
 
-  while (true) {
-    const { data, error } = await supabase
-      .from("player_seasons")
-      .select(
-        `
-        player_id,
-        players:players (
-          id,
-          name,
-          team,
-          position,
-          age,
-          image_url
-        )
-      `
-      )
-      .eq("season", season)
-      .order("player_id", { ascending: true })
-      .range(offset, offset + PAGE - 1);
-
-    if (error) throw new Error(`Failed to load current season players: ${error.message}`);
-    if (!data || data.length === 0) break;
-
-    for (const row of data as any[]) {
-      const p = Array.isArray(row.players) ? row.players[0] : row.players;
-      if (!p?.id || seen.has(p.id)) continue;
-      seen.add(p.id);
-      out.push({
-        id: p.id,
-        name: p.name,
-        team: p.team ?? null,
-        position: p.position ?? null,
-        age: p.age ?? null,
-        image_url: p.image_url ?? null,
-      });
-    }
-
-    if (data.length < PAGE) break;
-    offset += PAGE;
+  const warByPlayer = new Map<number, { a?: number; b?: number }>();
+  for (const r of ps ?? []) {
+    const pid = Number((r as any).player_id);
+    const season = Number((r as any).season);
+    const war = Number((r as any).war);
+    if (!Number.isFinite(pid) || !Number.isFinite(season) || !Number.isFinite(war)) continue;
+    const cur = warByPlayer.get(pid) ?? {};
+    if (season === seasonA) cur.a = war;
+    if (season === seasonB) cur.b = war;
+    warByPlayer.set(pid, cur);
   }
 
-  return out;
-}
-
-async function fetchSeasonsForPlayers(playerIds: number[], seasons: number[]): Promise<SeasonRow[]> {
-  const PAGE = 1000;
-  const out: SeasonRow[] = [];
-
-  for (let i = 0; i < playerIds.length; i += PAGE) {
-    const ids = playerIds.slice(i, i + PAGE);
-
-    const { data, error } = await supabase
-      .from("player_seasons")
-      .select("player_id,season,war,games_played,tps")
-      .in("player_id", ids)
-      .in("season", seasons);
-
-    if (error) throw new Error(`Failed to load player seasons: ${error.message}`);
-    if (data && data.length) out.push(...(data as SeasonRow[]));
+  const deltas: Array<{ player_id: number; delta: number }> = [];
+  for (const [pid, w] of warByPlayer.entries()) {
+    if (w.a == null || w.b == null) continue;
+    deltas.push({ player_id: pid, delta: w.a - w.b });
   }
 
-  return out;
-}
+  const ids = deltas
+    .sort((x, y) => y.delta - x.delta)
+    .slice(0, 50)
+    .map((d) => d.player_id);
 
-export default async function RisersPage() {
-  const currentSeason = getMostRecentCompletedSeason();
-  const priorSeason = currentSeason - 1;
+  if (ids.length === 0) return { seasonA, seasonB, rows: [] };
 
-  const players = await fetchCurrentSeasonPlayers(currentSeason);
-  const playerIds = players.map((p) => p.id);
+  const { data: players, error: pErr } = await supabase
+    .from("players")
+    .select("id,name")
+    .in("id", ids);
 
-  const seasonRows = await fetchSeasonsForPlayers(playerIds, [priorSeason, currentSeason]);
+  if (pErr) throw new Error(`players query failed: ${pErr.message}`);
 
-  const seasonsByPlayer = new Map<number, SeasonRow[]>();
-  for (const s of seasonRows) {
-    if (!seasonsByPlayer.has(s.player_id)) seasonsByPlayer.set(s.player_id, []);
-    seasonsByPlayer.get(s.player_id)!.push(s);
+  const nameById = new Map<number, string>();
+  for (const p of players ?? []) {
+    const id = Number((p as any).id);
+    const name = String((p as any).name ?? "").trim();
+    if (Number.isFinite(id) && name) nameById.set(id, name);
   }
 
-  type Mover = {
-    player: Player;
-    currentValue: number;
-    priorValue: number;
-    delta: number;
+  const rows = ids
+    .map((id) => ({ id, name: nameById.get(id) ?? "Unknown" }))
+    .filter((r) => r.name !== "Unknown");
+
+  return { seasonA, seasonB, rows };
+}
+
+export default async function RisersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ compare?: string }>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const compare = (sp.compare ?? "").trim();
+  const carry = compare ? `?compare=${encodeURIComponent(compare)}` : "";
+
+  let seasonA: number | null = null;
+  let seasonB: number | null = null;
+  let rows: Row[] = [];
+  let error: string | null = null;
+
+  try {
+    const out = await getRisers();
+    seasonA = out.seasonA;
+    seasonB = out.seasonB;
+    rows = out.rows;
+  } catch (e: any) {
+    error = e?.message ?? "Unknown error";
+    console.error("[RISERS_ERROR]", error);
+  }
+
+  const compareHrefFor = (playerId: number) => {
+    if (!compare) return `/compare?add=${playerId}`;
+    return `/compare?ids=${encodeURIComponent(compare)}&add=${playerId}`;
   };
 
-  const movers: Mover[] = [];
-
-  for (const p of players) {
-    const all = seasonsByPlayer.get(p.id) ?? [];
-    const upToCurrent = all.filter((r) => r.season <= currentSeason);
-    const upToPrior = all.filter((r) => r.season <= priorSeason);
-
-    const { valuation: vCur } = getPlayerValuation(p as any, upToCurrent as any);
-    const { valuation: vPrev } = getPlayerValuation(p as any, upToPrior as any);
-
-    const cur = vCur?.estimatedDollarValue ?? null;
-    const prev = vPrev?.estimatedDollarValue ?? null;
-    if (cur == null || prev == null) continue;
-
-    movers.push({
-      player: p,
-      currentValue: cur,
-      priorValue: prev,
-      delta: cur - prev,
-    });
-  }
-
-  movers.sort((a, b) => b.delta - a.delta);
-
-  const top = movers.slice(0, 50);
+  const playerHrefFor = (playerId: number) => {
+    if (!compare) return `/players/${playerId}`;
+    return `/players/${playerId}${carry}`;
+  };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10">
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Biggest Risers</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Largest estimated standing increases from {priorSeason} → {currentSeason}.
-        </p>
-      </header>
+    <div className="text-base">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="p-8 sm:p-10">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-4xl font-bold tracking-tight text-slate-900">Risers</h1>
+              <p className="mt-3 max-w-3xl text-lg leading-relaxed text-slate-600">
+                Players with the biggest year-over-year WAR gains across the two most recent completed seasons.
+                It’s an explainable “movement” signal — not a projection.
+              </p>
+              <div className="mt-2 text-xs text-slate-500">
+                {seasonA && seasonB ? `WAR change: ${seasonB} → ${seasonA}` : "WAR change: latest seasons"}
+              </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-12 gap-3 border-b border-slate-200 px-6 py-4 text-xs font-semibold text-slate-500">
-          <div className="col-span-6 sm:col-span-5">Player</div>
-          <div className="hidden sm:block sm:col-span-2">Team</div>
-          <div className="hidden sm:block sm:col-span-2">Pos</div>
-          <div className="col-span-3 sm:col-span-1 text-right">Δ</div>
-          <div className="col-span-3 sm:col-span-2 text-right">Now</div>
-        </div>
+              {compare ? (
+                <div className="mt-3 text-xs text-slate-500">
+                  Compare list active:{" "}
+                  <Link
+                    href={`/compare?ids=${encodeURIComponent(compare)}`}
+                    className="font-semibold text-slate-900 hover:underline"
+                  >
+                    view comparison →
+                  </Link>
+                </div>
+              ) : null}
+            </div>
 
-        <div className="divide-y divide-slate-200">
-          {top.map((m) => (
-            <div key={m.player.id} className="grid grid-cols-12 items-center gap-3 px-6 py-4">
-              <div className="col-span-6 sm:col-span-5">
-                <Link
-                  href={`/players/${m.player.id}`}
-                  className="flex items-center gap-4 rounded-lg p-2 -m-2 hover:bg-slate-50 transition"
-                  prefetch={false}
-                >
-                  <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={m.player.image_url ?? "/placeholder.png"}
-                      alt={m.player.name}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/watchlist${carry}`}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 shadow-sm"
+              >
+                Watchlist
+              </Link>
+              <Link
+                href={`/players/fallers${carry}`}
+                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 shadow-sm"
+              >
+                View Fallers
+              </Link>
+            </div>
+          </div>
 
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold">{m.player.name}</div>
-                    <div className="truncate text-xs text-slate-500">
-                      {formatMoney(m.priorValue)} → {formatMoney(m.currentValue)}
+          {error ? (
+            <div className="mt-8 text-sm text-slate-600">
+              Couldn’t load risers. Try refreshing.
+              <div className="mt-2 text-xs text-slate-400">(Server log: RISERS_ERROR)</div>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="mt-8 text-sm text-slate-600">Not enough data yet.</div>
+          ) : (
+            <div className="mt-10 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-6 py-4">
+                <div className="text-sm font-semibold text-slate-900">Top movers up</div>
+                <div className="mt-1 text-xs text-slate-500">Names only here — open a profile for full context.</div>
+              </div>
+
+              <div className="divide-y divide-slate-200">
+                {rows.map((p, idx) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-slate-50 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-6 text-xs font-semibold text-slate-500 tabular-nums">{idx + 1}</div>
+                      <Link
+                        href={playerHrefFor(p.id)}
+                        className="truncate text-sm font-semibold text-slate-900 hover:text-slate-700"
+                        prefetch={false}
+                      >
+                        {p.name}
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={compareHrefFor(p.id)}
+                        className="text-xs font-semibold text-slate-600 hover:text-slate-800"
+                        title="Add to Compare"
+                        prefetch={false}
+                      >
+                        Compare +
+                      </Link>
+                      <span className="text-emerald-700 text-sm">▲</span>
                     </div>
                   </div>
-                </Link>
+                ))}
               </div>
-
-              <div className="hidden sm:block sm:col-span-2 truncate text-sm">{m.player.team ?? "—"}</div>
-              <div className="hidden sm:block sm:col-span-2 truncate text-sm">
-                {m.player.position ?? "—"}
-              </div>
-
-              <div className="col-span-3 sm:col-span-1 text-right text-sm font-semibold text-green-700">
-                {formatDelta(m.delta)}
-              </div>
-
-              <div className="col-span-3 sm:col-span-2 text-right text-sm font-semibold">
-                {formatMoney(m.currentValue)}
-              </div>
-            </div>
-          ))}
-
-          {top.length === 0 && (
-            <div className="px-6 py-14 text-center text-sm text-slate-500">
-              No movers available.
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="mt-6 flex gap-3">
-        <Link
-          href="/players"
-          className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-        >
-          Back to Browse
-        </Link>
-        <Link
-          href="/players/fallers"
-          className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-        >
-          View Fallers
-        </Link>
+          <div className="mt-10 text-xs text-slate-500">
+            Note: Movement is based on year-over-year WAR deltas for completed seasons.
+          </div>
+        </div>
       </div>
     </div>
   );

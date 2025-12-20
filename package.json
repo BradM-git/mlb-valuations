@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "fetch-history": "tsx scripts/fetch-historical-stats.ts",
-    "update-stats": "tsx scripts/update-latest-stats.ts"
+    "update-stats": "tsx scripts/update-latest-stats.ts",
+    "ensure:season": "tsx scripts/ensure-player-seasons.ts",
+    "seed:war": "tsx scripts/seed-player-seasons-from-war.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
