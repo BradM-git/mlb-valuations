@@ -1,44 +1,45 @@
-// app/layout.tsx
-import "./globals.css";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MLB Valuations",
-  description: "WAR-first MLB player valuations",
+  title: {
+    default: "MLB Valuations",
+    template: "%s · MLB Valuations",
+  },
+  description:
+    "Authoritative MLB performance signals focused on recent impact and trajectory. Built for fans, fantasy research, and betting-adjacent context (not picks).",
+  metadataBase: new URL("https://mlb-valuations.vercel.app"),
+  openGraph: {
+    title: "MLB Valuations",
+    description:
+      "Authoritative MLB performance signals focused on recent impact and trajectory. Built for fans, fantasy research, and betting-adjacent context (not picks).",
+    type: "website",
+    url: "https://mlb-valuations.vercel.app",
+    siteName: "MLB Valuations",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "MLB Valuations",
+    description:
+      "Authoritative MLB performance signals focused on recent impact and trajectory. Built for fans, fantasy research, and betting-adjacent context (not picks).",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-50 text-slate-900">
-        {/* Global Nav */}
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between">
-            <Link href="/" className="text-xl font-bold tracking-tight">
-              MLB Valuations
-            </Link>
-            <nav className="flex items-center gap-6 text-sm font-medium text-slate-700">
-              <Link href="/players" className="hover:text-slate-900">
-                Browse Players
-              </Link>
-              <Link href="/methodology" className="hover:text-slate-900">
-                How It Works
-              </Link>
-            </nav>
-          </div>
-        </header>
-
-        {/* Page content */}
-        <main className="mx-auto max-w-6xl px-4 py-10">{children}</main>
-
-        {/* Global Footer */}
-        <footer className="mt-12 border-t border-slate-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
-            © MLB Valuations — WAR-first valuations. Not affiliated with MLB.
-          </div>
-        </footer>
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
