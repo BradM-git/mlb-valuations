@@ -148,6 +148,48 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* NEW: DASHBOARD ENTRY POINTS (no extra queries, no metrics shown) */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900">Movement Watch</h2>
+          <Link href="/players" className="text-sm font-semibold text-slate-700 hover:underline">
+            Browse Players →
+          </Link>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Link
+            href="/players/risers"
+            className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-base font-bold text-slate-900">Biggest Risers</div>
+              <div className="text-sm font-semibold text-green-700 group-hover:underline">
+                View all →
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              The players moving up fastest based on the most recent completed season vs prior context.
+            </p>
+          </Link>
+
+          <Link
+            href="/players/fallers"
+            className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-base font-bold text-slate-900">Biggest Fallers</div>
+              <div className="text-sm font-semibold text-red-700 group-hover:underline">
+                View all →
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              The players sliding most—useful for context, role changes, and risk awareness.
+            </p>
+          </Link>
+        </div>
+      </section>
+
       <section>
         <div className="grid grid-cols-1 gap-4">
           {topPlayers.map((p, idx) => (
