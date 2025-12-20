@@ -41,10 +41,16 @@ function normalizePlayer(p: SeasonJoinRow["players"]) {
   return Array.isArray(p) ? p[0] : p;
 }
 
-const CURRENT_SEASON = 2025;
+function getMostRecentCompletedSeason(): number {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  return month >= 10 ? year : year - 1;
+}
 
-// Keep the underlying ranking logic WAR-first, but DO NOT show it on the homepage.
 async function getTopPlayersRightNow(): Promise<PlayerCard[]> {
+  const season = getMostRecentCompletedSeason();
+
   const { data, error } = await supabase
     .from("player_seasons")
     .select(
@@ -63,7 +69,7 @@ async function getTopPlayersRightNow(): Promise<PlayerCard[]> {
       )
     `
     )
-    .eq("season", CURRENT_SEASON)
+    .eq("season", season)
     .order("war", { ascending: false, nullsFirst: false })
     .limit(25);
 
@@ -103,15 +109,13 @@ export default async function HomePage() {
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">
-          Top MLB Players Right Now
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight">Top MLB Players Right Now</h1>
         <p className="mt-2 text-sm text-slate-600">
           Ranked by recent on-field impact and trajectory
         </p>
       </header>
 
-      {/* HERO / PROMISE PANEL (NEW — ONLY ADDITION) */}
+      {/* HERO / PROMISE PANEL */}
       <section className="mb-8">
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
@@ -120,44 +124,30 @@ export default async function HomePage() {
 
           <p className="mt-3 text-sm leading-6 text-slate-700">
             MLB Valuations is an authority-first signal board for{" "}
-            <span className="font-semibold">recent impact and trajectory</span>{" "}
-            — built for fans, fantasy prep, and betting-adjacent context{" "}
+            <span className="font-semibold">recent impact and trajectory</span> — built for fans,
+            fantasy prep, and betting-adjacent context{" "}
             <span className="font-semibold">(not picks)</span>.
           </p>
 
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <ul className="space-y-2 text-sm text-slate-700">
               <li>
-                <span className="font-semibold text-slate-900">
-                  What you’re seeing:
-                </span>{" "}
-                a “best right now” Top 10 view — WAR-led and anchored to the most
-                recent completed season.
+                <span className="font-semibold text-slate-900">What you’re seeing:</span>{" "}
+                a “best right now” Top 10 view — WAR-led and context-aware.
               </li>
               <li>
-                <span className="font-semibold text-slate-900">
-                  Why it matters:
-                </span>{" "}
-                quickly surfaces momentum, stability, and context in a single
-                click.
+                <span className="font-semibold text-slate-900">Why it matters:</span>{" "}
+                quickly surfaces momentum, stability, and context in one glance.
               </li>
               <li>
-                <span className="font-semibold text-slate-900">
-                  What it isn’t:
-                </span>{" "}
-                not projections, not betting advice, and not a front-office
-                simulator.
+                <span className="font-semibold text-slate-900">What it isn’t:</span>{" "}
+                not projections, not betting advice, and not a front-office simulator.
               </li>
             </ul>
           </div>
-
-          <p className="mt-3 text-xs text-slate-500">
-            Informational analysis only — outcomes aren’t guaranteed.
-          </p>
         </div>
       </section>
 
-      {/* TOP 10 LIST (UNCHANGED) */}
       <section>
         <div className="grid grid-cols-1 gap-4">
           {topPlayers.map((p, idx) => (
@@ -185,22 +175,12 @@ export default async function HomePage() {
                     {p.name}
                   </div>
                   <div className="mt-0.5 text-sm text-slate-600">
-                    {(p.position ?? "—") +
-                      " · " +
-                      (p.team ?? "—") +
-                      " · Age " +
-                      (p.age ?? "—")}
+                    {(p.position ?? "—") + " · " + (p.team ?? "—") + " · Age " + (p.age ?? "—")}
                   </div>
                 </div>
               </div>
             </Link>
           ))}
-
-          {topPlayers.length === 0 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">
-              Unable to load Top 10 right now.
-            </div>
-          )}
         </div>
 
         <p className="mt-4 text-xs text-slate-500">
