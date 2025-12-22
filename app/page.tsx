@@ -9,6 +9,9 @@ import { StandingsPanel } from "./components/mlb/StandingsPanel";
 import { LeadersPanel } from "./components/mlb/LeadersPanel";
 import { TeamFormPanel } from "./components/mlb/TeamFormPanel";
 
+import { LatestTransfersPanel } from "./components/mlb/LatestTransfersPanel";
+import { LatestRumorsPanel } from "./components/mlb/LatestRumorsPanel";
+
 export const dynamic = "force-dynamic";
 
 type PlayerRow = {
@@ -405,7 +408,7 @@ export default async function HomePage({
   plannedFeatures = await getPlannedFeatures();
 
   return (
-    <div className="text-base">
+  <div className="text-base" suppressHydrationWarning>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* LEFT (wider) */}
         <div className="lg:col-span-8 space-y-6">
@@ -414,12 +417,12 @@ export default async function HomePage({
             <div className="p-8 sm:p-10">
               <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-slate-900">See who&apos;s actually driving wins</h1>
               <p className="mt-5 max-w-3xl text-lg sm:text-xl leading-relaxed text-slate-600">
-                MLB Valuations highlights explainable performance signals — built for fans, fantasy players, and decision support (not picks).
+                MLB Valuations shows which players are creating the most on-field value today. No hype. No projections. Just explainable performance, updated as the season unfolds.
               </p>
               <ul className="mt-6 space-y-2 text-base sm:text-lg text-slate-700 list-disc pl-6">
-                <li>Search any name to pull up a profile instantly</li>
-                <li>Use movement signals to spot change early</li>
-                <li>Open a player for full context (metrics live on profiles)</li>
+                <li>Search any player to see their current impact</li>
+                <li>Track movers to spot real change early</li>
+                <li>Open a profile for full context behind the numbers</li>
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
                 <Link
@@ -434,18 +437,27 @@ export default async function HomePage({
 
           {/* BROWSE */}
           <div id="browse" className="rounded-2xl border border-slate-200 bg-white shadow-sm scroll-mt-24">
-            <BrowsePlayersPanelClient
-              initialQ={q}
-              initialPage={page}
-              pageSize={pageSize}
-              initialRows={browseRows}
-              initialTotal={browseTotal}
-            />
+            <BrowsePlayersPanelClient initialQ={q} initialPage={page} pageSize={pageSize} initialRows={browseRows} initialTotal={browseTotal} />
           </div>
 
-          {/* TEAM FORM + STANDINGS (server panels, safe) */}
+          {/* TEAM FORM + STANDINGS */}
           <TeamFormPanel />
           <StandingsPanel />
+
+          {/* HOW THIS WORKS (moved from right → left bottom) */}
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="p-6">
+              <div className="text-xl font-semibold tracking-tight text-slate-900">How this works</div>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                Signals are built around on-field impact first. Movement uses year-over-year WAR deltas — simple, explainable, and hard to game.
+              </p>
+              <div className="mt-4">
+                <Link href="/methodology" className="text-sm font-semibold text-slate-900 hover:text-slate-700">
+                  Read the methodology →
+                </Link>
+              </div>
+            </div>
+          </div>
 
           {/* Planned Features hidden for now */}
           {false && <PlannedFeaturesPanel initialRows={plannedFeatures} />}
@@ -572,20 +584,9 @@ export default async function HomePage({
           {/* Leaders UNDER Top 10 */}
           <LeadersPanel />
 
-          {/* HOW THIS WORKS */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="p-6">
-              <div className="text-xl font-semibold tracking-tight text-slate-900">How this works</div>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                Signals are built around on-field impact first. Movement uses year-over-year WAR deltas — simple, explainable, and hard to game.
-              </p>
-              <div className="mt-4">
-                <Link href="/methodology" className="text-sm font-semibold text-slate-900 hover:text-slate-700">
-                  Read the methodology →
-                </Link>
-              </div>
-            </div>
-          </div>
+          {/* NEW: Transfers then Rumors (bottom right) */}
+          <LatestTransfersPanel />
+          <LatestRumorsPanel />
         </div>
       </div>
     </div>
