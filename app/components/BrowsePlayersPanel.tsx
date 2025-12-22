@@ -20,37 +20,31 @@ function fmt(n: number | null | undefined, d = 2) {
   return n.toFixed(d);
 }
 
-function getPageItems(current: number, total: number) {
+function getCompactPageItems(current: number, total: number) {
+  // Best-practice compact pagination:
+  // show 1, last, and a window around current (±2) with ellipses as needed.
   const items: (number | "...")[] = [];
-  if (total <= 12) {
+  if (total <= 9) {
     for (let i = 1; i <= total; i++) items.push(i);
     return items;
   }
 
   const c = Math.max(1, Math.min(total, current));
-  const pushRange = (a: number, b: number) => {
-    for (let i = a; i <= b; i++) items.push(i);
-  };
+  const window = 2; // was effectively 1 before; increase for more visible pages
 
-  if (c <= 6) {
-    pushRange(1, 10);
-    items.push("...");
-    items.push(total);
-    return items;
-  }
-
-  if (c >= total - 5) {
-    items.push(1);
-    items.push("...");
-    pushRange(total - 9, total);
-    return items;
-  }
+  const start = Math.max(2, c - window);
+  const end = Math.min(total - 1, c + window);
 
   items.push(1);
-  items.push("...");
-  pushRange(c - 2, c + 2);
-  items.push("...");
+
+  if (start > 2) items.push("...");
+
+  for (let i = start; i <= end; i++) items.push(i);
+
+  if (end < total - 1) items.push("...");
+
   items.push(total);
+
   return items;
 }
 
@@ -74,7 +68,10 @@ export function BrowsePlayersPanel({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil((total || 0) / pageSize)), [total, pageSize]);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil((total || 0) / pageSize)),
+    [total, pageSize]
+  );
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -145,67 +142,37 @@ export function BrowsePlayersPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const items = useMemo(() => getPageItems(page, totalPages), [page, totalPages]);
+  const items = useMemo(() => getCompactPageItems(page, totalPages), [page, totalPages]);
 
   const Pager = () => {
-    const hasPrev = page > 1;
-    const hasNext = page < totalPages;
-
     return (
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={!hasPrev || loading}
-            onClick={() => load(q, page - 1, true)}
-            className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm ${
-              hasPrev && !loading
-                ? "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                : "border-slate-200 bg-slate-50 text-slate-400"
-            }`}
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            disabled={!hasNext || loading}
-            onClick={() => load(q, page + 1, true)}
-            className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm ${
-              hasNext && !loading
-                ? "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                : "border-slate-200 bg-slate-50 text-slate-400"
-            }`}
-          >
-            Next
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1">
-          {items.map((it, i) => {
-            if (it === "...") {
-              return (
-                <span key={`dots-${i}`} className="px-1 text-xs text-slate-400">
-                  …
-                </span>
-              );
-            }
-
-            const isActive = it === page;
+      <div className="flex items-center gap-1">
+        {items.map((it, i) => {
+          if (it === "...") {
             return (
-              <button
-                key={it}
-                type="button"
-                disabled={loading}
-                onClick={() => load(q, it, true)}
-                className={`min-w-8 rounded-lg border px-2 py-2 text-center text-xs font-semibold shadow-sm ${
-                  isActive ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                }`}
-              >
-                {it}
-              </button>
+              <span key={`dots-${i}`} className="px-1 text-xs text-slate-400">
+                …
+              </span>
             );
-          })}
-        </div>
+          }
+
+          const isActive = it === page;
+          return (
+            <button
+              key={it}
+              type="button"
+              disabled={loading}
+              onClick={() => load(q, it, true)}
+              className={`min-w-8 rounded-lg border px-2 py-2 text-center text-xs font-semibold shadow-sm ${
+                isActive
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+              }`}
+            >
+              {it}
+            </button>
+          );
+        })}
       </div>
     );
   };
@@ -214,10 +181,9 @@ export function BrowsePlayersPanel({
     <>
       {/* Controls */}
       <div className="border-b border-slate-200 px-6 py-4">
-        <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
-          <div>
-            <div className="text-sm font-semibold text-slate-900">Browse Players</div>
-            <div className="mt-1 text-xs text-slate-500">Search any player and open a profile for full context.</div>
+        <div className="flex items-start justify-between gap-3 flex-col sm:flex-row">
+          <div className="pt-1">
+            <div className="text-xl font-semibold tracking-tight text-slate-900">Browse Players</div>
           </div>
 
           <form
@@ -225,7 +191,6 @@ export function BrowsePlayersPanel({
             onSubmit={(e) => {
               e.preventDefault();
               load(q, 1, true);
-              // jump to panel
               document.getElementById("browse")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           >
@@ -248,17 +213,16 @@ export function BrowsePlayersPanel({
 
       {/* Top pager */}
       <div className="border-b border-slate-200 px-6 py-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-slate-500">
             Page <span className="font-semibold text-slate-700">{page}</span> of{" "}
             <span className="font-semibold text-slate-700">{totalPages}</span>
-            {total ? ` · ${total.toLocaleString()} players` : ""}
+            {total ? ` · ${total.toLocaleString("en-US")} players` : ""}
           </div>
           <Pager />
         </div>
       </div>
 
-      {/* Errors / Loading */}
       {err ? <div className="px-6 py-4 text-sm text-rose-700">{err}</div> : null}
       {loading ? <div className="px-6 py-4 text-sm text-slate-500">Loading…</div> : null}
 
@@ -268,7 +232,6 @@ export function BrowsePlayersPanel({
           <div key={p.id} className="px-6 py-4">
             <div className="flex items-center justify-between gap-4">
               <Link href={`/players/${p.id}`} className="min-w-0 flex items-center gap-3">
-                {/* Headshot */}
                 <div className="h-10 w-10 rounded-full border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
                   {p.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -277,7 +240,7 @@ export function BrowsePlayersPanel({
                 </div>
 
                 <div className="min-w-0">
-                  <div className="font-semibold text-slate-900 truncate">{p.name}</div>
+                  <div className="font-semibold text-slate-900 truncate text-sm">{p.name}</div>
                   <div className="mt-1 text-xs text-slate-500 truncate">
                     {(p.team ?? "Unknown")} · {(p.position ?? "—")} {p.age ? `· Age ${p.age}` : ""}
                     {p.season ? ` · WAR (${p.season}): ${fmt(p.war, 2)}` : ""}
@@ -285,11 +248,12 @@ export function BrowsePlayersPanel({
                 </div>
               </Link>
 
-              <div className="flex items-center gap-3">
+              {/* Right side: Compare link (text, not button) */}
+              <div className="shrink-0 text-right">
                 <Link
-                  href={`/compare?add=${p.id}`}
-                  className="text-xs font-semibold text-slate-600 hover:text-slate-800 whitespace-nowrap"
-                  title="Add to Compare"
+                  href={`/compare?ids=${p.id}`}
+                  className="text-xs font-semibold text-slate-700 hover:text-slate-900 hover:underline"
+                  aria-label={`Compare ${p.name}`}
                 >
                   Compare +
                 </Link>
@@ -301,11 +265,11 @@ export function BrowsePlayersPanel({
 
       {/* Bottom pager */}
       <div className="border-t border-slate-200 px-6 py-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-slate-500">
             Page <span className="font-semibold text-slate-700">{page}</span> of{" "}
             <span className="font-semibold text-slate-700">{totalPages}</span>
-            {total ? ` · ${total.toLocaleString()} players` : ""}
+            {total ? ` · ${total.toLocaleString("en-US")} players` : ""}
           </div>
           <Pager />
         </div>
