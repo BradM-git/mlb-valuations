@@ -11,3 +11,51 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
     "Apple Color Emoji", "Segoe UI Emoji";
 }
+
+/* ===== MLB Valuations: screenshot skin (styling only) ===== */
+:root {
+  --mv-bg: #f8fafc;
+  --mv-text: #0f172a;
+  --mv-muted: #64748b;
+  --mv-border: #e2e8f0;
+
+  /* soft lavender wash used in panels */
+  --mv-panel-top: #f5f3ff;
+  --mv-panel-mid: #ffffff;
+
+  /* header underline gradient (defined for use elsewhere if needed) */
+  --mv-grad: linear-gradient(90deg, #4f46e5 0%, #06b6d4 55%, #22c55e 100%);
+  --mv-badge: linear-gradient(135deg, #2563eb 0%, #06b6d4 55%, #34d399 100%);
+}
+
+body {
+  background: var(--mv-bg);
+  color: var(--mv-text);
+}
+
+@layer components {
+  /* Panel wrapper */
+  .mv-panel {
+    @apply border shadow-sm overflow-hidden;
+    border-color: var(--mv-border);
+    border-radius: 28px;
+    background: linear-gradient(180deg, var(--mv-panel-top) 0%, var(--mv-panel-mid) 55%);
+  }
+
+  /* Panel header row (like Movement Watch) */
+  .mv-panel-header {
+    @apply border-b px-6 py-4;
+    border-color: var(--mv-border);
+    background: linear-gradient(180deg, var(--mv-panel-top) 0%, rgba(255, 255, 255, 0) 70%);
+  }
+
+  /* Panel body padding */
+  .mv-panel-body {
+    @apply p-6;
+  }
+
+  /* Divider */
+  .mv-divider {
+    border-top: 1px solid var(--mv-border);
+  }
+}

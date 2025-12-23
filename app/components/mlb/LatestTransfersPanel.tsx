@@ -59,15 +59,15 @@ export async function LatestTransfersPanel() {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="border-b border-slate-200 px-6 py-4">
+    <div className="mv-panel">
+      <div className="mv-panel-header">
         <div className="text-xl font-semibold tracking-tight text-slate-900">Latest Transfers</div>
       </div>
 
       {rows.length === 0 ? (
         <div className="px-6 py-6 text-sm text-slate-600">No recent transactions found.</div>
       ) : (
-        <div className="p-6">
+        <div className="mv-panel-body">
           <ul className="space-y-4">
             {rows.map((r: any) => {
               const playerName = String(r.playerName ?? "").trim();

@@ -139,13 +139,13 @@ export async function LeadersPanel() {
   ]);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="border-b border-slate-200 px-6 py-4">
+    <div className="mv-panel">
+      <div className="mv-panel-header">
         <div className="text-xl font-semibold tracking-tight text-slate-900">League Leaders</div>
         <div className="mt-2 text-xs text-slate-500">Season: 2025 (regular season)</div>
       </div>
 
-      <div className="p-6">
+      <div className="mv-panel-body">
         <TabsClient tabs={tabs} initialKey="hit">
           <TabPanel tabKey="hit">
             <div className="space-y-4">

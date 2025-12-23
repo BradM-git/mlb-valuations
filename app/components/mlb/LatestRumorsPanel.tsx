@@ -7,15 +7,15 @@ export async function LatestRumorsPanel() {
   const rows = await getLatestRumors(5);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="border-b border-slate-200 px-6 py-4">
+    <div className="mv-panel">
+      <div className="mv-panel-header">
         <div className="text-xl font-semibold tracking-tight text-slate-900">Latest Rumors</div>
       </div>
 
       {rows.length === 0 ? (
         <div className="px-6 py-6 text-sm text-slate-600">No feed items found.</div>
       ) : (
-        <div className="p-6">
+        <div className="mv-panel-body">
           <ul className="space-y-3">
             {rows.map((r) => (
               <li key={r.id} className="min-w-0">

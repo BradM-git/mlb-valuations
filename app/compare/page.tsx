@@ -182,13 +182,19 @@ export default async function ComparePage(props: {
 
   return (
     <div className="text-base">
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      {/* Back link */}
+      <div className="mb-4">
+        <Link href="/" className="text-sm font-semibold text-slate-700 hover:text-slate-900">
+          ← Back
+        </Link>
+      </div>
+
+      {/* ✅ Apply homepage panel gradient styling via class hook */}
+      <div className="mv-panel rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="p-8 sm:p-10">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-slate-900">
-                Compare
-              </h1>
+              <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-slate-900">Compare</h1>
               <p className="mt-4 max-w-2xl text-base sm:text-lg leading-relaxed text-slate-600">
                 Side-by-side context for a small set of players. Use “Compare +” from the dashboard or a player profile
                 to build your list.
@@ -242,7 +248,7 @@ export default async function ComparePage(props: {
               {/* Player cards */}
               <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {rows.map(({ p, outlook }) => (
-                  <div key={p.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div key={p.id} className="mv-panel rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <Link
@@ -298,12 +304,10 @@ export default async function ComparePage(props: {
               </div>
 
               {/* Comparison table */}
-              <div className="mt-8 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="mt-8 mv-panel rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 <div className="border-b border-slate-200 px-6 py-4">
                   <div className="text-sm font-semibold text-slate-900">Quick comparison</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    Compare page can show metrics (homepage stays clean).
-                  </div>
+                  <div className="mt-1 text-xs text-slate-500">Compare page can show metrics (homepage stays clean).</div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -336,12 +340,8 @@ export default async function ComparePage(props: {
                               {p.team ?? "Unknown"} · {p.position ?? "—"}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-700 tabular-nums">
-                            {warA == null ? "—" : warA.toFixed(2)}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-700 tabular-nums">
-                            {warB == null ? "—" : warB.toFixed(2)}
-                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700 tabular-nums">{warA == null ? "—" : warA.toFixed(2)}</td>
+                          <td className="px-6 py-4 text-sm text-slate-700 tabular-nums">{warB == null ? "—" : warB.toFixed(2)}</td>
                           <td className="px-6 py-4 text-sm text-slate-700 tabular-nums">
                             {delta == null ? "—" : delta >= 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}
                           </td>
@@ -367,10 +367,7 @@ export default async function ComparePage(props: {
                     players” link below.
                   </div>
                   <div className="flex items-center gap-3">
-                    <Link
-                      href={`/players${carryQuery}`}
-                      className="text-sm font-semibold text-slate-900 hover:text-slate-700"
-                    >
+                    <Link href={`/players${carryQuery}`} className="text-sm font-semibold text-slate-900 hover:text-slate-700">
                       Add more players →
                     </Link>
                     <Link href="/compare" className="text-sm font-semibold text-slate-900 hover:text-slate-700">

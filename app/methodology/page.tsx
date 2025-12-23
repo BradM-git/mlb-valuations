@@ -3,118 +3,134 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+function Panel(props: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mv-panel rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">{props.title}</h2>
+      {props.children}
+    </div>
+  );
+}
+
 export default function MethodologyPage() {
   return (
-    <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-10">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-          How This Works
-        </h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Clear signals. Defensible logic. No hype.
-        </p>
-      </header>
+    <div className="text-base">
+      {/* Back link (top-left, like Compare) */}
+      <div className="mb-4">
+        <Link href="/" className="text-sm font-semibold text-slate-700 hover:text-slate-900">
+          ← Back
+        </Link>
+      </div>
 
-      <section className="space-y-8">
-        {/* WHAT IT IS */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            What MLB Valuations is
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-700">
-            MLB Valuations is an <span className="font-semibold">authority-first performance signal</span>{" "}
-            designed to answer a simple question:
-            <span className="font-semibold"> who matters right now — and why?</span>
-          </p>
+      {/* Main page wrapper styled like Compare */}
+      <div className="mv-panel rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="p-8 sm:p-10">
+          <header className="mb-8">
+            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-slate-900">
+              How It Works
+            </h1>
+            <p className="mt-4 max-w-2xl text-base sm:text-lg leading-relaxed text-slate-600">
+              Clear signals. Defensible logic. No hype.
+            </p>
+          </header>
 
-          <p className="mt-3 text-sm leading-6 text-slate-700">
-            The site emphasizes recent impact, trajectory, and context rather than
-            long-term projections or speculative forecasts.
-          </p>
-        </div>
+          <section className="space-y-8">
+            <Panel title="What MLB Valuations is">
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                MLB Valuations is a performance-first dashboard designed to answer a simple question:
+                <span className="font-semibold"> who is driving wins right now — and why?</span>
+              </p>
+              <p className="mt-3 text-sm leading-6 text-slate-700">
+                It emphasizes on-field impact and explainable signals. The goal is clarity: show what’s happening,
+                surface movement, and let you drill into player context without requiring projections or hype.
+              </p>
+            </Panel>
 
-        {/* WHAT THE RANKINGS MEAN */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            What the rankings represent
-          </h2>
+            <Panel title="What you can do on the site">
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+                <li>
+                  <span className="font-semibold text-slate-900">Top 10 Players Right Now:</span> ranked primarily by the
+                  most recent current-season WAR available.
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-900">Movement Watch:</span> highlights biggest risers and
+                  fallers using year-over-year WAR deltas (latest available seasons).
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-900">Browse Players:</span> search any player and open their
+                  profile for deeper context.
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-900">Compare:</span> build a short list from “Compare +” and
+                  view side-by-side WAR context.
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-900">League context panels:</span> standings, team form,
+                  league leaders, plus latest transfers and rumors.
+                </li>
+              </ul>
+            </Panel>
 
-          <ul className="mt-3 space-y-2 text-sm text-slate-700">
-            <li>
-              <span className="font-semibold text-slate-900">Top 10 Players Right Now:</span>{" "}
-              a WAR-led snapshot of current on-field impact, anchored to the most
-              recent completed season.
-            </li>
-            <li>
-              <span className="font-semibold text-slate-900">Ordering principle:</span>{" "}
-              performance first, with context applied second.
-            </li>
-            <li>
-              <span className="font-semibold text-slate-900">Purpose:</span>{" "}
-              to surface momentum and stability quickly — not to predict exact outcomes.
-            </li>
-          </ul>
-        </div>
+            <Panel title="What the rankings represent">
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                <li>
+                  <span className="font-semibold text-slate-900">Ordering principle:</span> performance first, context
+                  second.
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-900">Purpose:</span> surface impact and movement quickly —
+                  not predict exact outcomes.
+                </li>
+                <li>
+                  <span className="font-semibold text-slate-900">Explainability:</span> rankings and movement are tied to
+                  visible season WAR inputs.
+                </li>
+              </ul>
+            </Panel>
 
-        {/* WHAT IT IS NOT */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            What this is not
-          </h2>
-          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
-            <li>Not betting picks or gambling advice</li>
-            <li>Not game-level predictions</li>
-            <li>Not a front-office contract simulator</li>
-            <li>Not a fantasy projection engine</li>
-          </ul>
-        </div>
+            <Panel title="What you’ll see on player pages">
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">Recent Impact</div>
+                  <div className="mt-1 text-sm text-slate-700">
+                    High-level contribution over the most recent seasons available.
+                  </div>
+                </div>
 
-        {/* PLAYER PAGES */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            What you’ll see on player pages
-          </h2>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">Stability</div>
+                  <div className="mt-1 text-sm text-slate-700">
+                    Durability and consistency signals (e.g. games played).
+                  </div>
+                </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">Recent Impact</div>
-              <div className="mt-1 text-sm text-slate-700">
-                High-level contribution over the most recent season.
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">Long-Term Context</div>
+                  <div className="mt-1 text-sm text-slate-700">
+                    Career shape and baseline level for grounding.
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">Compare workflow</div>
+                  <div className="mt-1 text-sm text-slate-700">
+                    Use “Compare +” to build a list and view side-by-side context.
+                  </div>
+                </div>
               </div>
-            </div>
+            </Panel>
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">Stability</div>
-              <div className="mt-1 text-sm text-slate-700">
-                Durability and consistency signals (e.g. games played).
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">Long-Term Context</div>
-              <div className="mt-1 text-sm text-slate-700">
-                Career shape and baseline level.
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">Outlook</div>
-              <div className="mt-1 text-sm text-slate-700">
-                Directional signal (Up / Steady / Down) with confidence and reasoning.
-              </div>
-            </div>
-          </div>
+            <Panel title="What this is not">
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
+                <li>Not betting picks or gambling advice</li>
+                <li>Not game-level predictions</li>
+                <li>Not a contract simulator</li>
+                <li>Not a fantasy projection engine</li>
+              </ul>
+            </Panel>
+          </section>
         </div>
-
-        <div className="pt-2">
-          <Link
-            href="/"
-            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-          >
-            Back to Top 10
-          </Link>
-        </div>
-      </section>
+      </div>
     </div>
   );
 }

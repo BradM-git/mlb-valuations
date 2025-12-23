@@ -2,7 +2,8 @@
 
 export type LatestTransferItem = {
   id: string;
-  date: string; // ISO-ish string from API (we display relative-ish lightly)
+  date: string; // API date string
+  personId?: number | null; // MLB person id (for headshots)
   playerName: string;
   type: string;
   fromTeam?: string | null;
@@ -16,7 +17,6 @@ function str(v: any, fallback = "") {
 }
 
 function isoDate(d: Date) {
-  // YYYY-MM-DD
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
@@ -24,7 +24,6 @@ function isoDate(d: Date) {
 }
 
 export async function getLatestTransfers(limit = 5): Promise<LatestTransferItem[]> {
-  // Pull last ~21 days to ensure we have enough items even in quiet periods
   const end = new Date();
   const start = new Date(end.getTime() - 21 * 24 * 60 * 60 * 1000);
 
@@ -37,7 +36,6 @@ export async function getLatestTransfers(limit = 5): Promise<LatestTransferItem[
   if (!res.ok) return [];
 
   const json = await res.json();
-
   const rows = Array.isArray(json?.transactions) ? json.transactions : [];
   if (!rows.length) return [];
 
@@ -45,29 +43,38 @@ export async function getLatestTransfers(limit = 5): Promise<LatestTransferItem[
 
   for (const r of rows) {
     const playerName = str(r?.person?.fullName, "");
+    const personIdRaw = r?.person?.id;
+    const personId = personIdRaw == null ? null : Number(personIdRaw);
+
     const type = str(r?.typeDesc, str(r?.typeCode, "Transaction"));
     const date = str(r?.date, str(r?.effectiveDate, ""));
 
     const fromTeam =
-      r?.fromTeam?.name != null ? str(r.fromTeam.name, "") :
-      r?.fromTeam?.abbreviation != null ? str(r.fromTeam.abbreviation, "") :
-      null;
+      r?.fromTeam?.name != null
+        ? str(r.fromTeam.name, "")
+        : r?.fromTeam?.abbreviation != null
+          ? str(r.fromTeam.abbreviation, "")
+          : null;
 
     const toTeam =
-      r?.toTeam?.name != null ? str(r.toTeam.name, "") :
-      r?.toTeam?.abbreviation != null ? str(r.toTeam.abbreviation, "") :
-      null;
+      r?.toTeam?.name != null
+        ? str(r.toTeam.name, "")
+        : r?.toTeam?.abbreviation != null
+          ? str(r.toTeam.abbreviation, "")
+          : null;
 
     const description = r?.description != null ? str(r.description, "") : null;
 
-    // Build an id that’s stable enough for list keys
-    const id = str(r?.transactionId, "") || `${playerName}|${type}|${date}|${fromTeam ?? ""}|${toTeam ?? ""}`;
+    const id =
+      str(r?.transactionId, "") ||
+      `${playerName}|${type}|${date}|${fromTeam ?? ""}|${toTeam ?? ""}`;
 
     if (!playerName) continue;
 
     out.push({
       id,
       date: date || "",
+      personId: Number.isFinite(personId) ? personId : null,
       playerName,
       type,
       fromTeam: fromTeam || null,
@@ -76,10 +83,10 @@ export async function getLatestTransfers(limit = 5): Promise<LatestTransferItem[
     });
   }
 
-  // Sort newest first (date is usually YYYY-MM-DD)
+  // newest first
   out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
-  // De-dupe by id (sometimes API repeats)
+  // de-dupe
   const seen = new Set<string>();
   const deduped: LatestTransferItem[] = [];
   for (const x of out) {
