@@ -154,7 +154,7 @@ function PlayerMissingPanel({
   debug: { paramsValue: any; rawId: string; parsedId: number | null };
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-8">
+    <div className="mv-panel shadow-sm p-8">
       <div className="text-2xl font-bold text-slate-900">Player not found</div>
       <div className="mt-2 text-sm text-slate-600">We couldn’t load this player from the database.</div>
 
@@ -218,6 +218,8 @@ export default async function PlayerDetailPage({
     return <PlayerMissingPanel debug={{ paramsValue: resolvedParams ?? null, rawId, parsedId: playerId }} />;
   }
 
+  const p = player; // TS: player is non-null from here down
+
   const mlbId = player.mlb_id ?? null;
 
   const { data: seasons } = await supabase
@@ -228,18 +230,15 @@ export default async function PlayerDetailPage({
 
   const safeSeasons: SeasonRow[] = (seasons ?? []) as any;
 
-  const [
-    vCurByPid,
-    vCurByMlb,
-    curTblByPid,
-    curTblByMlb,
-    histByPid,
-    histByMlb,
-  ] = await Promise.all([
+  const [vCurByPid, vCurByMlb, curTblByPid, curTblByMlb, histByPid, histByMlb] = await Promise.all([
     supabase.from("v_player_contract_current").select("*").eq("player_id", playerId).maybeSingle(),
-    mlbId ? supabase.from("v_player_contract_current").select("*").eq("mlb_id", mlbId).maybeSingle() : Promise.resolve({ data: null } as any),
+    mlbId
+      ? supabase.from("v_player_contract_current").select("*").eq("mlb_id", mlbId).maybeSingle()
+      : Promise.resolve({ data: null } as any),
     supabase.from("player_contracts_current").select("*").eq("player_id", playerId).maybeSingle(),
-    mlbId ? supabase.from("player_contracts_current").select("*").eq("mlb_id", mlbId).maybeSingle() : Promise.resolve({ data: null } as any),
+    mlbId
+      ? supabase.from("player_contracts_current").select("*").eq("mlb_id", mlbId).maybeSingle()
+      : Promise.resolve({ data: null } as any),
     supabase.from("player_contracts").select("*").eq("player_id", playerId),
     mlbId ? supabase.from("player_contracts").select("*").eq("mlb_id", mlbId) : Promise.resolve({ data: [] } as any),
   ]);
@@ -268,10 +267,7 @@ export default async function PlayerDetailPage({
   const mvByPid = await supabase.from("market_values").select("*").eq("player_id", playerId);
   const mvByMlb = mlbId ? await supabase.from("market_values").select("*").eq("mlb_id", mlbId) : ({ data: [] } as any);
 
-  const mvRows = [
-    ...(((mvByPid as any).data ?? []) as any[]),
-    ...(((mvByMlb as any).data ?? []) as any[]),
-  ];
+  const mvRows = [...(((mvByPid as any).data ?? []) as any[]), ...(((mvByMlb as any).data ?? []) as any[])];
 
   const marketPoints: MarketValuePoint[] = deriveMarketValuePoints(mvRows);
   const latestMarketValue =
@@ -355,7 +351,7 @@ export default async function PlayerDetailPage({
 
   return (
     <div className="text-base">
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="mv-panel shadow-sm">
         <div className="p-6 sm:p-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4 min-w-0">
@@ -375,7 +371,7 @@ export default async function PlayerDetailPage({
             <div className="flex items-center gap-2">
               <Link
                 href={`/compare?ids=${player.id}`}
-                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
               >
                 Add to Compare →
               </Link>
@@ -384,9 +380,9 @@ export default async function PlayerDetailPage({
 
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-8">
-              <div className="rounded-lg border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-sm font-semibold text-slate-900">Key numbers</div>
+              <div className="mv-panel overflow-hidden">
+                <div className="mv-panel-header">
+                  <div className="text-sm font-semibold text-slate-900">Key Numbers</div>
                   <div className="mt-1 text-xs text-slate-500">Compact summary. The chart + tables below provide full context.</div>
                 </div>
 
@@ -397,32 +393,36 @@ export default async function PlayerDetailPage({
                   </div>
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="text-xs font-semibold text-slate-500">Peak season</div>
+                    <div className="text-xs font-semibold text-slate-500">Peak Season</div>
                     <div className="tabular-nums text-lg font-bold text-slate-900">{peakSeason ? peakSeason.season : "—"}</div>
                     <div className="mt-1 text-xs text-slate-500">{peakSeason ? `WAR: ${fmt2(peakSeason.war ?? null)}` : ""}</div>
                   </div>
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="text-xs font-semibold text-slate-500">Prime window</div>
+                    <div className="text-xs font-semibold text-slate-500">Prime Window</div>
                     <div className="tabular-nums text-lg font-bold text-slate-900">{primeLabel}</div>
                     <div className="mt-1 text-xs text-slate-500">{bestPrime ? `WAR: ${fmt2(bestPrime.totalWar)}` : ""}</div>
                   </div>
 
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                     <div className="text-xs font-semibold text-slate-500">Games</div>
-                    <div className="tabular-nums text-lg font-bold text-slate-900">{careerGames == null ? "—" : careerGames.toLocaleString("en-US")}</div>
+                    <div className="tabular-nums text-lg font-bold text-slate-900">
+                      {careerGames == null ? "—" : careerGames.toLocaleString("en-US")}
+                    </div>
                   </div>
                 </div>
 
                 <div className="border-t border-slate-200 px-4 py-3">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <div className="text-sm text-slate-700">Latest market value</div>
+                      <div className="text-sm text-slate-700">Latest Market Value</div>
                       <div className="text-sm font-semibold tabular-nums text-slate-900">{formatMoneyShort(latestMarketValue)}</div>
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
-                      <div className="text-sm text-slate-700">Career contract value</div>
-                      <div className="text-sm font-semibold tabular-nums text-slate-900">{totalCareerContractValue ? formatMoneyShort(totalCareerContractValue) : "—"}</div>
+                      <div className="text-sm text-slate-700">Career Contract Value</div>
+                      <div className="text-sm font-semibold tabular-nums text-slate-900">
+                        {totalCareerContractValue ? formatMoneyShort(totalCareerContractValue) : "—"}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -430,15 +430,15 @@ export default async function PlayerDetailPage({
             </div>
 
             <div className="lg:col-span-4">
-              <div className="rounded-lg border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="mv-panel overflow-hidden">
+                <div className="mv-panel-header">
                   <div className="text-sm font-semibold text-slate-900">Valuation</div>
                   <div className="mt-1 text-xs text-slate-500">Explainable output from WAR + modifiers.</div>
                 </div>
 
                 <div className="p-4 space-y-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-xs font-semibold text-slate-500">Estimated value</div>
+                    <div className="text-xs font-semibold text-slate-500">Estimated Value</div>
                     <div className="mt-1 text-2xl font-bold text-slate-900">{formatMoney(est)}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       TVI: <span className="font-semibold text-slate-700 tabular-nums">{fmt2(tvi)}</span>
@@ -446,7 +446,7 @@ export default async function PlayerDetailPage({
                   </div>
 
                   <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                    <div className="text-xs font-semibold text-slate-500">Inputs used</div>
+                    <div className="text-xs font-semibold text-slate-500">Inputs Used</div>
                     <div className="mt-2 flex items-center justify-between text-sm">
                       <span className="text-slate-700">WAR used</span>
                       <span className="font-semibold tabular-nums text-slate-900">{warUsed ?? "—"}</span>
@@ -459,7 +459,7 @@ export default async function PlayerDetailPage({
 
                   {showValuationDetails && modelDetails.length ? (
                     <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-500">Model details</div>
+                      <div className="text-xs font-semibold text-slate-500">Model Details</div>
                       <div className="mt-2 space-y-2">
                         {modelDetails.map(([k, v]) => (
                           <div key={k} className="flex items-start justify-between gap-3">
@@ -477,73 +477,80 @@ export default async function PlayerDetailPage({
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
-            <div className="lg:col-span-5">
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-sm font-semibold text-slate-900">Contracts</div>
-                  <div className="mt-1 text-xs text-slate-500">Current deal + history (from your DB).</div>
-                </div>
+          {/* Hidden for now: Contracts + Market Value history panel (as requested) */}
+          {false && (
+            <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
+              <div className="lg:col-span-5">
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-sm font-semibold text-slate-900">Contracts</div>
+                    <div className="mt-1 text-xs text-slate-500">Current deal + history (from your DB).</div>
+                  </div>
 
-                <div className="p-4">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-xs font-semibold text-slate-500">Current contract</div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-slate-700">Team</div>
-                      <div className="text-right font-semibold text-slate-900">{currentTeam}</div>
+                  <div className="p-4">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="text-xs font-semibold text-slate-500">Current contract</div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                        <div className="text-slate-700">Team</div>
+                        <div className="text-right font-semibold text-slate-900">{currentTeam}</div>
 
-                      <div className="text-slate-700">Total</div>
-                      <div className="text-right font-semibold tabular-nums text-slate-900">{formatMoneyShort(currentTotal)}</div>
+                        <div className="text-slate-700">Total</div>
+                        <div className="text-right font-semibold tabular-nums text-slate-900">
+                          {formatMoneyShort(currentTotal)}
+                        </div>
 
-                      <div className="text-slate-700">AAV</div>
-                      <div className="text-right font-semibold tabular-nums text-slate-900">{formatMoneyShort(currentAAV)}</div>
+                        <div className="text-slate-700">AAV</div>
+                        <div className="text-right font-semibold tabular-nums text-slate-900">
+                          {formatMoneyShort(currentAAV)}
+                        </div>
 
-                      <div className="text-slate-700">Years</div>
-                      <div className="text-right font-semibold tabular-nums text-slate-900">{currentYears ?? "—"}</div>
+                        <div className="text-slate-700">Years</div>
+                        <div className="text-right font-semibold tabular-nums text-slate-900">{currentYears ?? "—"}</div>
 
-                      <div className="text-slate-700">Term</div>
-                      <div className="text-right font-semibold tabular-nums text-slate-900">{currentTerm}</div>
+                        <div className="text-slate-700">Term</div>
+                        <div className="text-right font-semibold tabular-nums text-slate-900">{currentTerm}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="border-t border-slate-200 bg-white">
-                  {historyContracts.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-sm text-slate-500">No contract rows found.</div>
-                  ) : (
-                    <div className="divide-y divide-slate-200">
-                      <div className="grid grid-cols-12 gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500 border-b border-slate-200">
-                        <div className="col-span-3">Years</div>
-                        <div className="col-span-3">Team</div>
-                        <div className="col-span-3 text-right">Total</div>
-                        <div className="col-span-3 text-right">AAV</div>
-                      </div>
-
-                      {historyContracts.slice(0, 8).map((r, idx) => (
-                        <div key={idx} className="grid grid-cols-12 gap-3 px-4 py-3 text-sm">
-                          <div className="col-span-3 font-semibold tabular-nums">
-                            {r.startYear && r.endYear ? `${r.startYear}–${r.endYear}` : "—"}
-                          </div>
-                          <div className="col-span-3 truncate">{r.team ?? "—"}</div>
-                          <div className="col-span-3 text-right tabular-nums font-semibold">{formatMoneyShort(r.total)}</div>
-                          <div className="col-span-3 text-right tabular-nums">{formatMoneyShort(r.aav)}</div>
+                  <div className="border-t border-slate-200 bg-white">
+                    {historyContracts.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-sm text-slate-500">No contract rows found.</div>
+                    ) : (
+                      <div className="divide-y divide-slate-200">
+                        <div className="grid grid-cols-12 gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500 border-b border-slate-200">
+                          <div className="col-span-3">Years</div>
+                          <div className="col-span-3">Team</div>
+                          <div className="col-span-3 text-right">Total</div>
+                          <div className="col-span-3 text-right">AAV</div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+
+                        {historyContracts.slice(0, 8).map((r, idx) => (
+                          <div key={idx} className="grid grid-cols-12 gap-3 px-4 py-3 text-sm">
+                            <div className="col-span-3 font-semibold tabular-nums">
+                              {r.startYear && r.endYear ? `${r.startYear}–${r.endYear}` : "—"}
+                            </div>
+                            <div className="col-span-3 truncate">{r.team ?? "—"}</div>
+                            <div className="col-span-3 text-right tabular-nums font-semibold">{formatMoneyShort(r.total)}</div>
+                            <div className="col-span-3 text-right tabular-nums">{formatMoneyShort(r.aav)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="lg:col-span-7">
-              <MarketValueChartClient playerName={player.name} points={marketPoints} />
+              <div className="lg:col-span-7">
+                <MarketValueChartClient playerName={p.name} points={marketPoints} />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-6">
-            <div className="rounded-lg border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-sm font-semibold text-slate-900">Career arc</div>
+            <div className="mv-panel overflow-hidden">
+              <div className="mv-panel-header">
+                <div className="text-sm font-semibold text-slate-900">Career Arc</div>
                 <div className="mt-1 text-xs text-slate-500">WAR by season (from your DB).</div>
               </div>
               <div className="p-4">
@@ -552,10 +559,12 @@ export default async function PlayerDetailPage({
             </div>
           </div>
 
-          <div className="mt-6 overflow-hidden rounded-lg border border-slate-200">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="text-sm font-semibold text-slate-900">Season history</div>
-              <div className="mt-1 text-xs text-slate-500">Team uses season rows when present; otherwise falls back to player team.</div>
+          <div className="mt-6 mv-panel overflow-hidden">
+            <div className="mv-panel-header">
+              <div className="text-sm font-semibold text-slate-900">Season History</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Team uses season rows when present; otherwise falls back to player team.
+              </div>
             </div>
 
             <div className="divide-y divide-slate-200 bg-white">
@@ -581,7 +590,6 @@ export default async function PlayerDetailPage({
               )}
             </div>
           </div>
-
         </div>
       </div>
     </div>
